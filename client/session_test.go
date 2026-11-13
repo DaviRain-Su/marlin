@@ -185,6 +185,59 @@ func TestCancelRemoteUncertain(t *testing.T) {
 	}
 }
 
+// The acceptance scenario: another client committed a turn meanwhile; our
+// stale after_turn must be calibrated from the summary, not surfaced.
+func TestCalibratesAfterAnotherClientCommits(t *testing.T) {
+	addr, _ := startSessionHost(t, "gui-session")
+	conn := dial(t, addr)
+	mA := client.NewSessionManager(conn, "gui-session")
+	mB := client.NewSessionManager(conn, "gui-session") // watermark 0
+
+	turn1, err := mA.Send(context.Background(), "send-A", "from client A")
+	if err != nil {
+		t.Fatalf("A send: %v", err)
+	}
+	collectUntilOutcome(t, context.Background(), mA, turn1)
+
+	turn2, err := mB.Send(context.Background(), "send-B", "from client B")
+	if err != nil {
+		t.Fatalf("B send after calibration: %v", err)
+	}
+	if turn2.Ordinal != 2 {
+		t.Errorf("B turn ordinal = %d, want 2", turn2.Ordinal)
+	}
+	if mB.AfterTurn() != 2 {
+		t.Errorf("B watermark = %d, want 2", mB.AfterTurn())
+	}
+}
+
+// A busy session must surface the refusal, not spin: active turn blocks new
+// work (design §6.3 FAILED_PRECONDITION branch).
+func TestPreconditionBusySurfacesRefusal(t *testing.T) {
+	addr, h := startSessionHost(t, "gui-session")
+	h.SetSlow(200 * time.Millisecond)
+	mA := client.NewSessionManager(dial(t, addr), "gui-session")
+	mB := client.NewSessionManager(dial(t, addr), "gui-session")
+
+	turn, err := mA.Send(context.Background(), "send-A", "long running")
+	if err != nil {
+		t.Fatalf("A send: %v", err)
+	}
+	defer collectUntilOutcome(t, context.Background(), mA, turn)
+
+	_, err = mB.Send(context.Background(), "send-B", "while busy")
+	if err == nil {
+		t.Fatal("expected refusal while a turn is active")
+	}
+	kind, ok := client.AsErrKind(err)
+	if !ok || kind != client.ErrPrecondition {
+		t.Errorf("kind = %v (ok=%v), want ErrPrecondition", kind, ok)
+	}
+	if !strings.Contains(err.Error(), "session busy") {
+		t.Errorf("error should state the session is busy: %v", err)
+	}
+}
+
 func TestSummaryStates(t *testing.T) {
 	addr, h := startSessionHost(t, "gui-session")
 	m := client.NewSessionManager(dial(t, addr), "gui-session")

@@ -108,6 +108,7 @@ func (m *SessionManager) Send(ctx context.Context, submissionID, userText string
 		SubmissionId: submissionID,
 	}
 	backoff := 100 * time.Millisecond
+	calibrations := 0
 	for {
 		resp, err := c.StartSessionTurn(ctx, req)
 		if err == nil {
@@ -124,9 +125,42 @@ func (m *SessionManager) Send(ctx context.Context, submissionID, userText string
 		switch kind {
 		case ErrHostUnavailable, ErrConcurrentAdmission:
 			// Retry the exact request: same id, same text, same after_turn.
+		case ErrPrecondition:
+			// FAILED_PRECONDITION covers stale after_turn AND a busy/unresolved
+			// session. Calibrate from the summary; only retry when the refusal
+			// was the ordinal (design §6.3). This also recovers from another
+			// client committing a turn meanwhile (the acceptance scenario).
+			if calibrations >= 2 {
+				return TurnRef{}, lastErr
+			}
+			s, serr := m.Summary(ctx)
+			if serr != nil {
+				return TurnRef{}, serr
+			}
+			switch s.RecoveryState {
+			case appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_ACTIVE:
+				return TurnRef{}, fmt.Errorf("session busy: %w", lastErr)
+			case appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED,
+				appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_TOOL_CONTINUATION_PENDING:
+				return TurnRef{}, fmt.Errorf("session unresolved: %w", lastErr)
+			}
+			if s.Latest != nil {
+				m.mu.Lock()
+				if s.Latest.Ordinal > m.afterTurn {
+					m.afterTurn = s.Latest.Ordinal
+				}
+				// This submission was never admitted: rebind it to the fresh
+				// watermark. A committed submission cannot reach this path
+				// (idempotent replays return the original turn instead).
+				m.records[submissionID] = pendingSubmission{text: p.text, afterTurn: m.afterTurn}
+				req.AfterTurn = m.afterTurn
+				m.mu.Unlock()
+			}
+			calibrations++
+			continue
 		default:
-			// Keep the pending record: the caller may inspect the refusal and
-			// retry later (e.g. FAILED_PRECONDITION calibration).
+			// Keep the record: the caller may inspect the refusal and retry
+			// later (e.g. limit refusal).
 			return TurnRef{}, lastErr
 		}
 		select {
