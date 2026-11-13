@@ -26,6 +26,16 @@ func hostBinaryPath() string {
 	return ""
 }
 
+// hostProvider resolves which model gateway the dev host should use.
+// MARLIN_HOST_PROVIDER overrides; the dev default is kimi. This flag belongs
+// to devhost's CLI; the real Rust host reads its route config host-side.
+func hostProvider() string {
+	if p := os.Getenv("MARLIN_HOST_PROVIDER"); p != "" {
+		return p
+	}
+	return "kimi"
+}
+
 // Connect spawns the sidecar host, installs the session manager, and
 // supervises the process for the app's lifetime. It runs on its own
 // goroutine and reports every transition through the Status event
@@ -46,7 +56,10 @@ func Connect(chat *ChatService, win *mygo.Window) {
 	emit(ConnState{State: "starting"})
 	failures := 0
 	for {
-		h, err := sidecar.Start(ctx, sidecar.Options{Binary: bin})
+		h, err := sidecar.Start(ctx, sidecar.Options{
+			Binary:    bin,
+			ExtraArgs: []string{"--provider", hostProvider()},
+		})
 		if err != nil {
 			failures++
 			if failures >= 5 {

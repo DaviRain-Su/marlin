@@ -147,6 +147,19 @@ func New(sessionID string) *Host {
 // SetGateway installs the model gateway (tests / devhost).
 func (h *Host) SetGateway(g ChatGateway) { h.gateway = g }
 
+// Probe issues one gateway call outside the journal — the devhost smoke test
+// for real provider connectivity.
+func (h *Host) Probe(userText string, onText func(string)) error {
+	g := h.gateway
+	if g == nil {
+		g = EchoGateway{}
+	}
+	return g.StreamTurn(context.Background(), []ChatMessage{{Role: "user", Text: userText}}, func(chunk string) error {
+		onText(chunk)
+		return nil
+	})
+}
+
 // SetSession binds (or rebinds) the Session ID.
 func (h *Host) SetSession(id string) {
 	h.mu.Lock()

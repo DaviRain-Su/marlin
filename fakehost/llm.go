@@ -39,6 +39,104 @@ func (EchoGateway) StreamTurn(_ context.Context, history []ChatMessage, onText f
 	return onText(reply)
 }
 
+// AnthropicGateway streams from an Anthropic-compatible /v1/messages
+// endpoint (Kimi for Coding serves one at api.kimi.com/coding/). The API key
+// travels via env to the host process, never via argv (design doc §5.2).
+type AnthropicGateway struct {
+	BaseURL string // default https://api.kimi.com/coding/
+	APIKey  string
+	Model   string // default k3
+	HTTP    *http.Client
+}
+
+// StreamTurn POSTs a streaming messages request and relays text_delta chunks.
+func (g *AnthropicGateway) StreamTurn(ctx context.Context, history []ChatMessage, onText func(string) error) error {
+	base := g.BaseURL
+	if base == "" {
+		base = "https://api.kimi.com/coding/"
+	}
+	model := g.Model
+	if model == "" {
+		model = "k3"
+	}
+	httpClient := g.HTTP
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	msgs := make([]map[string]string, len(history))
+	for i, m := range history {
+		msgs[i] = map[string]string{"role": m.Role, "content": m.Text}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"model":      model,
+		"max_tokens": 4096,
+		"messages":   msgs,
+		"stream":     true,
+	})
+	if err != nil {
+		return err
+	}
+	url := strings.TrimSuffix(base, "/") + "/v1/messages"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Authorization", "Bearer "+g.APIKey)
+	req.Header.Set("x-api-key", g.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("provider status %d: %s", resp.StatusCode, truncate(string(body), 300))
+	}
+
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		var ev struct {
+			Type  string `json:"type"`
+			Delta struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"delta"`
+			Error *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			return fmt.Errorf("bad SSE event: %w", err)
+		}
+		switch ev.Type {
+		case "content_block_delta":
+			if ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
+				if err := onText(ev.Delta.Text); err != nil {
+					return err
+				}
+			}
+		case "message_stop":
+			return nil
+		case "error":
+			msg := "unknown provider error"
+			if ev.Error != nil {
+				msg = ev.Error.Message
+			}
+			return fmt.Errorf("provider error: %s", msg)
+		}
+	}
+	return sc.Err()
+}
 // DeepSeekGateway streams from an OpenAI-compatible chat completions endpoint
 // (api.deepseek.com by default). The API key travels via env to the host
 // process, never via argv (design doc §5.2).

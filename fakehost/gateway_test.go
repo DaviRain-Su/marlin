@@ -3,6 +3,8 @@ package fakehost_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -226,3 +228,93 @@ func TestEchoGatewayFallback(t *testing.T) {
 		t.Errorf("echo text = %q", text.String())
 	}
 }
+
+// anthropicSSE writes one Anthropic content_block_delta event.
+func anthropicSSE(t *testing.T, w http.ResponseWriter, events ...string) {
+	t.Helper()
+	for _, e := range events {
+		fmt.Fprintf(w, "data: %s\n\n", e)
+	}
+}
+
+func TestAnthropicGatewayStreams(t *testing.T) {
+	var body atomicString
+	sse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body.set(string(b))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		eventJSON := func(v any) string { j, _ := json.Marshal(v); return string(j) }
+		anthropicSSE(t, w,
+			eventJSON(map[string]any{"type": "message_start"}),
+			eventJSON(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]string{"type": "text_delta", "text": "你好"}}),
+			eventJSON(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]string{"type": "text_delta", "text": "，来自 Kimi"}}),
+			eventJSON(map[string]any{"type": "message_stop"}),
+		)
+	}))
+	t.Cleanup(sse.Close)
+
+	ln, err := fakehost.Listen()
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	h := fakehost.New("gui-session")
+	h.SetGateway(&fakehost.AnthropicGateway{BaseURL: sse.URL, APIKey: "test-key", Model: "k3"})
+	srv := fakehost.NewServer(h, "")
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(srv.Stop)
+
+	m := dialManager(t, ln.Addr().String())
+	_, evs := sendFollow(t, m, "send-1", "hi")
+	var text strings.Builder
+	for _, ev := range evs {
+		if ev.Kind == client.EventText {
+			text.WriteString(ev.Text)
+		}
+	}
+	if text.String() != "你好，来自 Kimi" {
+		t.Errorf("streamed text = %q", text.String())
+	}
+	if evs[len(evs)-1].Outcome != appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_COMPLETED {
+		t.Errorf("outcome = %v, want COMPLETED", evs[len(evs)-1].Outcome)
+	}
+	if b := body.get(); !strings.Contains(b, `"model":"k3"`) || !strings.Contains(b, `"content":"hi"`) {
+		t.Errorf("request body mismatch: %s", b)
+	}
+}
+
+func TestAnthropicGatewayErrorEvent(t *testing.T) {
+	sse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`data: {"type":"error","error":{"type":"invalid_request_error","message":"bad model"}}` + "\n\n"))
+	}))
+	t.Cleanup(sse.Close)
+
+	ln, err := fakehost.Listen()
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	h := fakehost.New("gui-session")
+	h.SetGateway(&fakehost.AnthropicGateway{BaseURL: sse.URL, APIKey: "k"})
+	srv := fakehost.NewServer(h, "")
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(srv.Stop)
+
+	m := dialManager(t, ln.Addr().String())
+	_, evs := sendFollow(t, m, "send-1", "hi")
+	if evs[len(evs)-1].Outcome != appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REJECTED_BEFORE_DISPATCH {
+		t.Errorf("outcome = %v, want REJECTED_BEFORE_DISPATCH", evs[len(evs)-1].Outcome)
+	}
+}
+
+// atomicString is a tiny race-safe string holder for SSE fixtures.
+type atomicString struct {
+	mu sync.Mutex
+	s  string
+}
+
+func (a *atomicString) set(s string)  { a.mu.Lock(); a.s = s; a.mu.Unlock() }
+func (a *atomicString) get() string   { a.mu.Lock(); defer a.mu.Unlock(); return a.s }

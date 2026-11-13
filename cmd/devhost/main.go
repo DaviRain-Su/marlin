@@ -5,8 +5,9 @@
 //
 // Usage:
 //
-//	go run ./cmd/devhost --provider deepseek   # DEEPSEEK_API_KEY in env
-//	go run ./cmd/devhost                       # no key: echo fallback
+//	go run ./cmd/devhost --provider kimi      # KIMI_API_KEY in env or .env.local
+//	go run ./cmd/devhost --provider deepseek  # DEEPSEEK_API_KEY
+//	go run ./cmd/devhost --probe              # one real gateway call, then exit
 //
 // It prints "host ready addr=<addr>" once serving, then blocks until SIGTERM.
 package main
@@ -48,29 +49,57 @@ func loadDotEnv(path string) {
 	}
 }
 
+func firstEnv(names ...string) string {
+	for _, n := range names {
+		if v := os.Getenv(n); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func main() {
 	loadDotEnv(".env.local")
+
 	bindAddr := flag.String("bind-addr", "127.0.0.1:0", "HTTP/2 listen address")
 	authToken := flag.String("auth-token", "", "required token; empty disables auth (loopback dev only)")
 	sessionID := flag.String("session-id", "gui-session", "Session ID reported by GetCapabilities")
-	provider := flag.String("provider", "echo", "model gateway: echo | deepseek")
-	baseURL := flag.String("base-url", "https://api.deepseek.com", "OpenAI-compatible chat endpoint base URL")
-	model := flag.String("model", "deepseek-chat", "model name for the deepseek provider")
+	provider := flag.String("provider", "echo", "model gateway: echo | deepseek | kimi")
+	baseURL := flag.String("base-url", "", "provider base URL (defaults per provider)")
+	model := flag.String("model", "", "model name (defaults per provider)")
+	probe := flag.Bool("probe", false, "send one real gateway call ('ping') and exit")
 	flag.Parse()
 
-	h := fakehost.New(*sessionID)
+	var gateway fakehost.ChatGateway
 	switch *provider {
 	case "deepseek":
-		key := os.Getenv("DEEPSEEK_API_KEY")
-		if key == "" {
-			log.Printf("DEEPSEEK_API_KEY not set; falling back to the echo gateway")
-			h.SetGateway(fakehost.EchoGateway{})
-		} else {
-			h.SetGateway(&fakehost.DeepSeekGateway{BaseURL: *baseURL, APIKey: key, Model: *model})
-			log.Printf("model gateway: %s at %s (model %s)", *provider, *baseURL, *model)
-		}
+		base := or(*baseURL, "https://api.deepseek.com")
+		gateway = newGateway(os.Getenv("DEEPSEEK_API_KEY"), base, or(*model, "deepseek-chat"),
+			func(key, base, model string) fakehost.ChatGateway {
+				return &fakehost.DeepSeekGateway{BaseURL: base, APIKey: key, Model: model}
+			}, "DEEPSEEK_API_KEY", *provider)
+	case "kimi", "anthropic":
+		base := or(*baseURL, or(firstEnv("ANTHROPIC_BASE_URL"), "https://api.kimi.com/coding/"))
+		m := or(*model, or(firstEnv("KIMI_MODEL", "ANTHROPIC_MODEL", "CLAUDE_CODE_MODEL"), "k3"))
+		gateway = newGateway(firstEnv("KIMI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"), base, m,
+			func(key, base, model string) fakehost.ChatGateway {
+				return &fakehost.AnthropicGateway{BaseURL: base, APIKey: key, Model: model}
+			}, "KIMI_API_KEY", *provider)
 	default:
-		h.SetGateway(fakehost.EchoGateway{})
+		gateway = fakehost.EchoGateway{}
+	}
+	h := fakehost.New(*sessionID)
+	h.SetGateway(gateway)
+
+	// --probe: one real gateway call, streamed to stdout, no gRPC server.
+	if *probe {
+		if err := h.Probe("请只回复两个字符：OK", func(chunk string) {
+			fmt.Print(chunk)
+		}); err != nil {
+			log.Fatalf("probe failed: %v", err)
+		}
+		fmt.Println()
+		return
 	}
 
 	ln, err := net.Listen("tcp", *bindAddr)
@@ -90,4 +119,23 @@ func main() {
 	if err := srv.Serve(ln); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
+}
+
+func or(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// newGateway builds the provider gateway or falls back to echo when the key
+// is missing.
+func newGateway(key, base, model string, build func(key, base, model string) fakehost.ChatGateway, envName, provider string) fakehost.ChatGateway {
+	if key == "" {
+		log.Printf("%s not set; falling back to the echo gateway", envName)
+		return fakehost.EchoGateway{}
+	}
+	g := build(key, base, model)
+	log.Printf("model gateway: %s at %s (model %s)", provider, base, model)
+	return g
 }
