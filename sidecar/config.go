@@ -31,6 +31,11 @@ type HostConfig struct {
 	SessionID string
 	// StoragePath is the libsql session journal (host-side journal).
 	StoragePath string
+	// ToolsWorkspace enables the host tool surface: a run_command shell
+	// tool rooted at this directory. Empty disables tools (default).
+	ToolsWorkspace string
+	// ToolsAllow is a comma-separated tool-name allowlist ("*" = all).
+	ToolsAllow string
 }
 
 // DefaultConfigPath is the user-level config location:
@@ -85,6 +90,10 @@ func LoadConfig(path string) (HostConfig, error) {
 			c.SessionID = value
 		case "storage_path":
 			c.StoragePath = value
+		case "tools_workspace":
+			c.ToolsWorkspace = value
+		case "tools_allow":
+			c.ToolsAllow = value
 		default:
 			// Unknown keys stay ignored: the config grows before this
 			// reader does.
@@ -113,6 +122,8 @@ provider = "kimi"
 # protocol: anthropic | openai | openai-responses (default per provider)
 # auth: bearer | provider-default (kimi defaults to bearer)
 # storage_path: libsql session journal (default under the config dir)
+# tools_workspace: enable the run_command shell tool, rooted at this path
+# tools_allow: comma-separated tool names, "*" = all
 `
 	return os.WriteFile(path, []byte(tpl), 0o600)
 }

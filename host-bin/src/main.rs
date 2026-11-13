@@ -11,6 +11,8 @@
 // The one-time token arrives through the MARLIN_HOST_AUTH_TOKEN
 // environment; it is never in argv and never logged.
 
+mod tool_loop;
+
 use std::{env, path::PathBuf, sync::Arc, time::Duration};
 
 use marlin_agent_app_server::{AppServer, SessionBinding};
@@ -38,6 +40,12 @@ struct FileConfig {
     /// Path of the libsql session journal; defaults under the user's
     /// config directory.
     storage_path: Option<String>,
+    /// Tool surface (opt-in). `tools_workspace` roots the shell tool;
+    /// `tools_allow` is a comma-separated tool-name list ("*" = all).
+    tools_workspace: Option<String>,
+    tools_allow: Option<String>,
+    /// Provider round trips the tool loop may take per turn (default 8).
+    tools_max_rounds: Option<usize>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -168,10 +176,10 @@ async fn serve(bind_addr: String, session_flag: String, cfg: FileConfig, config_
     };
     let endpoint = Endpoint::new(protocol, &full_url)?.with_authentication(authentication);
 
-    let gateway: Arc<dyn marlin_agent_stream::ModelStreamingGateway> = Arc::new(
+    let weaver: Arc<dyn marlin_agent_stream::ModelStreamingGateway> = Arc::new(
         WeaverModelGateway::new(client, provider.clone().into(), endpoint, credential)
             .with_stream_output_limit(ModelStreamOutputLimit::new(
-                std::num::NonZeroUsize::new(8 * 1024 * 1024).expect("positive limit"),
+                std::num::NonZeroUsize::new(64 * 1024).expect("positive limit"),
             )),
     );
 
@@ -197,10 +205,31 @@ async fn serve(bind_addr: String, session_flag: String, cfg: FileConfig, config_
     let (runtime, _events) = TokioAgentRuntime::from_build_request(
         TokioAgentRuntimeBuildRequest::runtime_root(64).with_session(session),
     );
+
+    // Tool surface (opt-in): with tools_workspace the host closes the tool
+    // loop itself; the wire still carries pure text turns.
+    let gateway: Arc<dyn marlin_agent_stream::ModelStreamingGateway> = match &cfg.tools_workspace {
+        Some(workspace) if !workspace.trim().is_empty() => {
+            let allow = cfg.tools_allow.clone().unwrap_or_else(|| "*".into());
+            let allow: Vec<String> = allow.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect();
+            let surface = Arc::new(tool_loop::ToolSurface::shell(PathBuf::from(workspace), allow)?);
+            let max_rounds = cfg.tools_max_rounds.unwrap_or(8).max(1);
+            println!(
+                "tool surface: run_command at {workspace} (allow {:?}, max {max_rounds} rounds/turn)",
+                surface.allow,
+            );
+            Arc::new(tool_loop::ToolLoopGateway::new(
+                weaver,
+                surface,
+                runtime.context(),
+                max_rounds,
+            ))
+        }
+        _ => weaver,
+    };
+
     let binding = SessionBinding::new(storage, ProjectId::new("desktop")?, AgentId::new("app")?, runtime)?;
 
-    // Loopback-only transport: the token in the environment is the single
-    // gate; every RPC must present "authorization: Bearer <token>".
     let token = env::var("MARLIN_HOST_AUTH_TOKEN")?;
     let service = AppServer::new(
         model_endpoint,

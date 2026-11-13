@@ -24,6 +24,7 @@ marlin-agent-stream = { git = "https://github.com/tao3k/marlin-agent-core", rev 
 weaver-llm = { git = "https://github.com/hardenedlinux/weaver", rev = "2cbb6bf7c6bcfddccde5105b809739323fa29d50" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
 toml = "0.9"
 tonic = { version = "=0.14.9", default-features = false, features = [
     "server",

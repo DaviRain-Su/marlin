@@ -123,6 +123,21 @@ sidecar 传参/env
 - **凭证缺失快速失败**：host 启动即报错退出（否则每个 turn 都是 REMOTE_UNCERTAIN），App 横幅透出错误。
 - journal 是 libsql 文件（默认 `<config>/marlin-desktop/sessions.db`）：跨进程重放、多轮上下文、unresolved 恢复均实测工作。
 
+#### 工具环（2026-11-13 实测打通）
+
+`marlin.app.v1` 是纯 text-turn 契约：模型请求工具会把 turn 终结为 ToolRequested，且 app-server 拒绝准入含 pending tool request 的历史（协议缺口 §12.6-1）。因此工具环在 host 内闭合（`host-bin/src/tool_loop.rs`，包在 Weaver 网关外）：
+
+```
+session(纯 text 请求) → ToolLoopGateway（附工具定义）
+  → 模型 ToolRequested → host 策略门（allowlist）→ ShellToolHandler 执行
+  → 工具结果作为 Tool 消息续流（轮数上限 8）→ 合成终态 Completed（全文累积、无 tool_calls）
+```
+
+- session 看到的是一条连续文本流（跨轮重排 sequence）+ 一个 Completed 终态——journal 记完整 turn，协议零改动。
+- 策略：`tools_workspace` 显式启用（默认关）；`tools_allow` allowlist，拒绝的工具以 Tool 消息回给模型（模型可自适应而非 turn 失败）。
+- 权衡：工具调用与结果不进 durable journal（turn 在 journal 里是纯文本）；上游审批/权限 RPC 落地后此网关换正式实现（§12.6-1）。
+- 教训：session 流消费端对未知事件一律 InvalidResponse——跨轮只允许一个 Started 事件、chunk sequence 必须严格连续。
+
 ### 5.2 启动握手
 ```
 App 启动
