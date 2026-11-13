@@ -107,9 +107,11 @@ func Start(ctx context.Context, opts Options) (*Host, error) {
 	if cmd.Stderr == nil {
 		cmd.Stderr = os.Stderr
 	}
-	// The token travels in the child's environment only. A clean base env
-	// keeps secrets out of inherited exports.
-	cmd.Env = append([]string{TokenEnv + "=" + token}, opts.ExtraEnv...)
+	// The token travels in the child's environment only. The child inherits
+	// the app's environment (HOME, PATH — the host resolves user paths) and
+	// a clean base keeps secrets out of inherited exports.
+	cmd.Env = append(os.Environ(), TokenEnv+"="+token)
+	cmd.Env = append(cmd.Env, opts.ExtraEnv...)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("sidecar: spawn %s: %w", opts.Binary, err)
 	}

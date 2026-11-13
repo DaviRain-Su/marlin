@@ -11,16 +11,26 @@ import (
 // model endpoint + provider credentials, read by the host at startup.
 // v1 uses a flat TOML subset: `key = "value"` lines and # comments.
 type HostConfig struct {
-	// Provider selects the model gateway: deepseek | kimi (echo needs none).
+	// Provider selects the model gateway: deepseek (OpenAI wire) | kimi
+	// (Anthropic wire, Bearer auth). echo needs no credential.
 	Provider string
+	// WireProtocol overrides the wire: anthropic | openai |
+	// openai-responses (default per provider).
+	Protocol string
+	// Auth overrides the credential header: bearer | provider-default
+	// (kimi defaults to bearer; api.anthropic.com to x-api-key).
+	Auth string
 	// APIKey is the provider credential; it overrides the environment.
 	APIKey string
-	// BaseURL overrides the provider's default endpoint.
+	// BaseURL overrides the provider's default endpoint (a base, not the
+	// full request path — the host expands /v1/messages etc.).
 	BaseURL string
 	// Model overrides the provider's default model name.
 	Model string
 	// SessionID pins the Session binding ("" lets the host choose).
 	SessionID string
+	// StoragePath is the libsql session journal (host-side journal).
+	StoragePath string
 }
 
 // DefaultConfigPath is the user-level config location:
@@ -61,6 +71,10 @@ func LoadConfig(path string) (HostConfig, error) {
 		switch key {
 		case "provider":
 			c.Provider = value
+		case "protocol":
+			c.Protocol = value
+		case "auth":
+			c.Auth = value
 		case "api_key":
 			c.APIKey = value
 		case "base_url":
@@ -69,6 +83,8 @@ func LoadConfig(path string) (HostConfig, error) {
 			c.Model = value
 		case "session_id":
 			c.SessionID = value
+		case "storage_path":
+			c.StoragePath = value
 		default:
 			// Unknown keys stay ignored: the config grows before this
 			// reader does.
@@ -86,14 +102,17 @@ func WriteConfigTemplate(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	const tpl = `# Marlin model provider configuration.
-# provider: kimi (Anthropic-compatible) | deepseek (OpenAI-compatible)
+	const tpl = `# Marlin model provider configuration (read by the packaged host).
+# provider: kimi (Anthropic wire, Bearer) | deepseek (OpenAI wire)
 provider = "kimi"
 # api_key overrides the KIMI_API_KEY / DEEPSEEK_API_KEY environment.
 # api_key = ""
 # base_url and model override the provider defaults.
 # base_url = ""
 # model = ""
+# protocol: anthropic | openai | openai-responses (default per provider)
+# auth: bearer | provider-default (kimi defaults to bearer)
+# storage_path: libsql session journal (default under the config dir)
 `
 	return os.WriteFile(path, []byte(tpl), 0o600)
 }

@@ -5,9 +5,9 @@ node_modules/
 mygo_windows_*.syso
 
 # local dev artifacts
-/host-bin/
 /devhost
 /resources/darwin-arm64/marlin-host
+/host-bin/target/
 .dev.log
 /.env.local
 *.test

@@ -1,0 +1,35 @@
+[package]
+name = "marlin-host"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# The real Marlin host binary: embeds the upstream app-server library
+# (marlin.app.v1 gRPC), the Weaver model gateway, and the Turso (libsql)
+# session journal. Pinned to the same upstream commit as our vendored
+# proto (see scripts/vendor-proto.sh) so the wire contract cannot drift.
+
+[dependencies]
+marlin-agent-app-server = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656", features = [
+    "grpc",
+] }
+marlin-agent-protocol = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
+marlin-agent-runtime = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
+marlin-agent-sessions = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
+marlin-agent-storage = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656", features = [
+    "turso",
+] }
+marlin-agent-stream = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
+weaver-llm = { git = "https://github.com/hardenedlinux/weaver", rev = "2cbb6bf7c6bcfddccde5105b809739323fa29d50" }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+toml = "0.9"
+tonic = { version = "=0.14.9", default-features = false, features = [
+    "server",
+    "router",
+] }
+
+[profile.release]
+strip = true
+lto = "thin"

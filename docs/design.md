@@ -106,8 +106,22 @@ protoc \
 
 ## 5. Sidecar：Rust host 进程管理
 
-### 5.1 host 的组装（上游已定，App 不实现）
-按上游 README，host 二进制由 Rust 侧组装好：`SessionBinding`（store/project/agent/runtime）+ `AppServer::new(endpoint, gateway, authorize)` + `tonic::transport::Server`。App 只负责**运行**它。
+### 5.1 host 的组装（host-bin/，已落地）
+
+上游 `marlin-agent-app-server` 是**库**（`AppServer` + `SessionBinding`），不产独立二进制；`host-bin/` 是本仓库的薄包装 crate（git 依赖 pin 同 vendored proto 的 `c33fffa`，wire 契约零漂移）：
+
+```
+sidecar 传参/env
+  → AppServer::new(ModelEndpoint, WeaverModelGateway, authorize)   // 真实模型路由
+  → .with_session(SessionBinding::new(TursoAgentStorage, Project, Agent, TokioAgentRuntime))
+  → tonic::transport::Server                                       // marlin.app.v1
+```
+
+要点（2026-11-13 实测打通）：
+- **URL 即完整请求目标**：weaver 的 Endpoint 直接 POST，`resolve_direct_target` 只在 env 分支做归一化——配置的 base_url 由 host-bin 自行展开（Anthropic → `/v1/messages`，OpenAI → `/chat/completions`）。
+- **认证**：Anthropic wire 默认 `x-api-key`（仅 `sk-ant-oat` 走 Bearer）；Kimi coding 端点需要 Bearer → kimi 路由显式 `Authentication::Bearer`（config `auth` 键可覆盖）。
+- **凭证缺失快速失败**：host 启动即报错退出（否则每个 turn 都是 REMOTE_UNCERTAIN），App 横幅透出错误。
+- journal 是 libsql 文件（默认 `<config>/marlin-desktop/sessions.db`）：跨进程重放、多轮上下文、unresolved 恢复均实测工作。
 
 ### 5.2 启动握手
 ```
@@ -116,14 +130,15 @@ App 启动
   → 生成一次性 token T（crypto/rand, 32B）
   → spawn host 二进制：
       --bind-addr 127.0.0.1:P
-      --auth-token T            （host 的 authorize 回调只放行 metadata 携带 T 的请求）
+      --session-id S
       --config app-sidecar.toml （模型 endpoint + provider 凭证 + 存储路径）
+      env MARLIN_HOST_AUTH_TOKEN=T （token 只进环境；argv 的 ps 可见性是 M0 遗留风险，已改）
   → 轮询 GetCapabilities（指数退避，10s 超时判定启动失败）
   → 成功：读 session_id（无值 = host 未绑定 Session，报配置错误）
 ```
 
 - 通信全程 **127.0.0.1 明文**（不出环回，靠 token 鉴权；grpc-go `insecure` 凭证 + `127.0.0.1` 限定）。
-- token 只进子进程环境/argv，不落盘、不写日志。
+- token 只进子进程环境，不落盘、不写日志、不进 argv。
 - host 崩溃：client 层连接失败可见 → sidecar 管理器自动重启（上限 N 次/分钟）→ App 顶部条显示"重新连接中"。重启后 journal 持久 store（host 侧 Turso/本地库）保证 committed 记录还在，App 走 §7 的重放路径。
 
 ### 5.3 退出
@@ -328,6 +343,7 @@ marlin/
 | host 二进制体积与 CI（需 Rust 工具链构建/分发三平台） | 打包复杂度 | host 构建单独 job；先只做 macOS（与需求一致） |
 | unresolved turn 阻塞新工作 | 用户可被卡住 | UI 一等状态展示 + `GetSessionTurnCancellation` 读证据；等上游 provider reconciliation |
 | after_turn 竞态（两窗口/重放并发发送） | ABORTED 抖动 | 单窗口假设 v1 成立；重试路径已覆盖 |
+| journal 是 libsql 单文件锁 | dev 窗口与打包 App 同时运行会抢锁（第二次 spawn 靠 sidecar 重试缓解，仍不可共存） | 单实例假设 v1 成立；多实例/并发写入等上游 storage 支持后再放开 |
 | thinking 不上 wire | 进度条无依据 | 不展示 thinking 进度；文本即进度 |
 
 **待上游确认**：
