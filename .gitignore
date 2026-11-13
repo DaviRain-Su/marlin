@@ -1,0 +1,10 @@
+node_modules/
+/dist/
+/build/
+/.mygo/
+mygo_windows_*.syso
+
+# local dev artifacts
+/host-bin/
+*.test
+coverage.out
