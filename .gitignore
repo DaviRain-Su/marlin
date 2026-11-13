@@ -6,6 +6,8 @@ mygo_windows_*.syso
 
 # local dev artifacts
 /host-bin/
+/devhost
+.dev.log
+/.env.local
 *.test
 coverage.out
-.dev.log

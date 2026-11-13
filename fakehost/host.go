@@ -10,16 +10,20 @@ package fakehost
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	appv1 "marlin-desktop/gen/marlin/app/v1"
 )
+
+// errTurnCanceled aborts the gateway stream when cancellation wins.
+var errTurnCanceled = errors.New("fakehost: turn canceled")
 
 func statusError(c codes.Code, msg string) error { return status.Error(c, msg) }
 
@@ -31,6 +35,11 @@ type turnState struct {
 	inputText    string
 	afterTurn    uint64
 
+	// ctx drives provider-side cancellation: CancelSessionTurn fires cancelFn
+	// so an in-flight gateway stream drops (provider effects stay unknown).
+	ctx      context.Context
+	cancelFn context.CancelFunc
+
 	mu      sync.Mutex
 	events  []*appv1.SessionTurnEvent
 	active  bool
@@ -41,10 +50,19 @@ type turnState struct {
 }
 
 func newTurn(sessionID string, ordinal uint64, submissionID, text string, afterTurn uint64) *turnState {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &turnState{
 		sessionID: sessionID, ordinal: ordinal, submissionID: submissionID,
 		inputText: text, afterTurn: afterTurn, notify: make(chan struct{}),
+		ctx: ctx, cancelFn: cancel,
 	}
+}
+
+// isCanceled reports whether cancellation was requested for this turn.
+func (t *turnState) isCanceled() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.canceled
 }
 
 // append commits one event and wakes watchers.
@@ -101,6 +119,7 @@ func (t *turnState) waitChan() chan struct{} {
 type Host struct {
 	appv1.UnimplementedAppServerServer
 
+	gateway    ChatGateway
 	mu          sync.Mutex
 	sessionID   string
 	maxReq      uint32
@@ -118,11 +137,15 @@ type Host struct {
 // configuration error, design §5.2).
 func New(sessionID string) *Host {
 	return &Host{
+		gateway:   EchoGateway{},
 		sessionID: sessionID,
 		maxReq:    256 * 1024, maxMsg: 128, maxOut: 1024 * 1024,
 		turns: map[uint64]*turnState{}, bySubmit: map[string]uint64{},
 	}
 }
+
+// SetGateway installs the model gateway (tests / devhost).
+func (h *Host) SetGateway(g ChatGateway) { h.gateway = g }
 
 // SetSession binds (or rebinds) the Session ID.
 func (h *Host) SetSession(id string) {
@@ -237,6 +260,9 @@ func (h *Host) CancelSessionTurn(ctx context.Context, req *appv1.CancelSessionTu
 		t.canceled = true
 	}
 	t.mu.Unlock()
+	if wasActive {
+		t.cancelFn() // drop the in-flight provider stream
+	}
 
 	// Wait for the local scope to retire (execute honors the flag).
 	deadline := time.Now().Add(2 * time.Second)
@@ -306,29 +332,45 @@ func (h *Host) GetSessionSummary(ctx context.Context, req *appv1.GetSessionSumma
 	return resp, nil
 }
 
-// execute streams the canned response for one turn: Started, text chunks,
-// then the committed outcome. Honors the cancel flag between chunks.
+// execute streams one turn through the model gateway: Started, streamed text
+// checkpoints, then the committed outcome. Cancellation drops the in-flight
+// provider stream (REMOTE_UNCERTAIN); a gateway failure with zero committed
+// text commits a pre-dispatch refusal.
 func (h *Host) execute(t *turnState) {
+	defer t.cancelFn() // release gateway resources at turn retirement
 	t.append(&appv1.SessionTurnEvent{EventId: t.nextID(), Event: &appv1.SessionTurnEvent_Started{Started: &appv1.TurnStarted{}}})
-	outcome := appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_COMPLETED
-	for _, chunk := range chunks(t.inputText, 16) {
-		t.mu.Lock()
-		canceled := t.canceled
-		t.mu.Unlock()
-		if canceled {
-			outcome = appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REMOTE_UNCERTAIN
-			break
+
+	gateway := h.gateway
+	if gateway == nil {
+		gateway = EchoGateway{}
+	}
+	chunks := 0
+	err := gateway.StreamTurn(t.ctx, h.historyFor(t.ordinal), func(chunk string) error {
+		if t.isCanceled() {
+			return errTurnCanceled
 		}
 		if h.slow > 0 {
 			time.Sleep(h.slow)
 		}
-		text := chunk
 		t.append(&appv1.SessionTurnEvent{
 			EventId: t.nextID(),
-			Event:   &appv1.SessionTurnEvent_TextCheckpoint{TextCheckpoint: &appv1.TextCheckpoint{Text: text}},
+			Event:   &appv1.SessionTurnEvent_TextCheckpoint{TextCheckpoint: &appv1.TextCheckpoint{Text: chunk}},
 		})
-	}
-	if t.canceled && outcome == appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_COMPLETED {
+		chunks++
+		return nil
+	})
+
+	outcome := appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_COMPLETED
+	switch {
+	case err == nil && !t.isCanceled():
+		// A completion that wins the race against cancellation commits.
+	case errors.Is(err, errTurnCanceled) || t.isCanceled():
+		outcome = appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REMOTE_UNCERTAIN
+	case chunks == 0:
+		outcome = appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REJECTED_BEFORE_DISPATCH
+	default:
+		// Provider failed after dispatch: keep the partial text, report that
+		// the provider's final state is unknown.
 		outcome = appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REMOTE_UNCERTAIN
 	}
 	t.append(&appv1.SessionTurnEvent{EventId: t.nextID(), Event: &appv1.SessionTurnEvent_Outcome{Outcome: outcome}})
@@ -364,30 +406,42 @@ func (h *Host) turnOf(ref *appv1.SessionTurnRef) *turnState {
 	return h.turns[ref.Ordinal]
 }
 
-func turnRef(sessionID string, ordinal uint64) *appv1.SessionTurnRef {
-	return &appv1.SessionTurnRef{SessionId: sessionID, Ordinal: ordinal}
-}
-
-func chunks(text string, n int) []string {
-	var out []string
-	for text != "" {
-		c := n
-		if utf8.RuneCountInString(text) < c {
-			c = utf8.RuneCountInString(text)
+// historyFor assembles the model conversation from the journal: every
+// committed turn up to and including the running one, user text followed by
+// the assistant's committed text (route/provider credentials stay host-side,
+// design doc §1).
+func (h *Host) historyFor(ordinal uint64) []ChatMessage {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []ChatMessage
+	for i := uint64(1); i <= ordinal; i++ {
+		t := h.turns[i]
+		if t == nil {
+			continue
 		}
-		// Split at rune boundary.
-		size := len(text)
-		if utf8.RuneCountInString(text) > c {
-			size = 0
-			for i := 0; i < c; i++ {
-				_, w := utf8.DecodeRuneInString(text[size:])
-				size += w
-			}
+		out = append(out, ChatMessage{Role: "user", Text: t.inputText})
+		if at := t.assistantText(); at != "" {
+			out = append(out, ChatMessage{Role: "assistant", Text: at})
 		}
-		out = append(out, text[:size])
-		text = text[size:]
 	}
 	return out
+}
+
+// assistantText concatenates the committed text checkpoints.
+func (t *turnState) assistantText() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var b strings.Builder
+	for _, ev := range t.events {
+		if tc := ev.GetTextCheckpoint(); tc != nil {
+			b.WriteString(tc.GetText())
+		}
+	}
+	return b.String()
+}
+
+func turnRef(sessionID string, ordinal uint64) *appv1.SessionTurnRef {
+	return &appv1.SessionTurnRef{SessionId: sessionID, Ordinal: ordinal}
 }
 
 func validSubmissionID(id string) error {
