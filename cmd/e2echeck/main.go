@@ -3,6 +3,7 @@
 // utility for verifying the live stack without the window.
 //
 //	go run ./cmd/e2echeck --addr 127.0.0.1:59556 --token <token> --text "hi"
+//	go run ./cmd/e2echeck --addr … --token … --cancel-after 2s   # Stop path
 package main
 
 import (
@@ -21,6 +22,8 @@ func main() {
 	session := flag.String("session", "gui-session", "Session ID")
 	text := flag.String("text", "你好，请用一句话介绍你自己", "user text")
 	timeout := flag.Duration("timeout", 60*time.Second, "turn deadline")
+	cancelAfter := flag.Duration("cancel-after", 0, "request cancellation this long after admission (0 = never)")
+	summaryOnly := flag.Bool("summary", false, "print the session summary and exit")
 	flag.Parse()
 	if *addr == "" || *token == "" {
 		log.Fatal("--addr and --token are required")
@@ -42,6 +45,18 @@ func main() {
 	fmt.Printf("caps: session=%s max_request=%d max_output=%d\n", caps.SessionID, caps.MaxRequestBytes, caps.MaxOutputTextByte)
 
 	m := client.NewSessionManager(conn, *session)
+	if *summaryOnly {
+		s, err := m.Summary(ctx)
+		if err != nil {
+			log.Fatalf("summary: %v", err)
+		}
+		latest := "none"
+		if s.Latest != nil {
+			latest = fmt.Sprintf("ordinal=%d", s.Latest.Ordinal)
+		}
+		fmt.Printf("summary: latest=%s recovery=%s\n", latest, s.RecoveryState)
+		return
+	}
 	if err := m.SyncFromSummary(ctx); err != nil {
 		log.Fatalf("summary: %v", err)
 	}
@@ -50,6 +65,19 @@ func main() {
 		log.Fatalf("send: %v", err)
 	}
 	fmt.Printf("turn: ordinal=%d\n", turn.Ordinal)
+
+	if *cancelAfter > 0 {
+		go func() {
+			time.Sleep(*cancelAfter)
+			r, err := m.Cancel(context.Background(), turn)
+			if err != nil {
+				log.Printf("cancel: %v", err)
+				return
+			}
+			fmt.Printf("cancel receipt: completed=%v requested=%v outcome=%s\n",
+				r.Completed, r.CancellationRequested, r.Outcome)
+		}()
+	}
 
 	events := make(chan client.SessionEvent, 64)
 	followCtx, followCancel := context.WithCancel(ctx)

@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "dompurify": "^3.4.17",
+    "marked": "^18.2.0",
     "mygo-runtime": "^0.9.0"
   },
   "devDependencies": {

@@ -1,5 +1,17 @@
 import { Channel } from "mygo-runtime";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { ChatService, events, type StoredTurn, type TurnProgress } from "./mygo";
+
+// Model output is untrusted content rendered inside the page that holds the
+// Go IPC bridge — sanitize aggressively before it becomes HTML.
+marked.setOptions({ async: false, gfm: true, breaks: true });
+function renderMarkdown(text: string): string {
+  return DOMPurify.sanitize(marked.parse(text) as string, {
+    FORBID_TAGS: ["style", "form", "iframe"],
+    FORBID_ATTR: ["onerror", "onclick", "onload"],
+  });
+}
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
@@ -39,6 +51,8 @@ events.status.on((s) => {
 interface MessageRow {
   root: HTMLElement;
   text: HTMLElement;
+  /** Raw accumulated markdown for assistant rows; "" for user rows. */
+  raw: string;
 }
 
 function addUserRow(text: string): MessageRow {
@@ -51,19 +65,24 @@ function addUserRow(text: string): MessageRow {
   root.appendChild(body);
   messages.appendChild(root);
   scrollToBottom();
-  return { root, text: body };
+  return { root, text: body, raw: "" };
 }
 
 function addAssistantRow(): MessageRow {
   const root = document.createElement("div");
   root.className = "msg assistant";
   const body = document.createElement("div");
-  body.className = "msg-text";
-  body.style.whiteSpace = "pre-wrap";
+  body.className = "msg-text markdown";
   root.appendChild(body);
   messages.appendChild(root);
   scrollToBottom();
-  return { root, text: body };
+  return { root, text: body, raw: "" };
+}
+
+/** Re-renders an assistant row's accumulated markdown (per streaming chunk). */
+function appendMarkdown(row: MessageRow, delta: string) {
+  row.raw += delta;
+  row.text.innerHTML = renderMarkdown(row.raw);
 }
 
 function setOutcome(row: HTMLElement, outcome: string) {
@@ -94,7 +113,7 @@ function scrollToBottom() {
 function renderStoredTurn(row: StoredTurn) {
   addUserRow(row.userText);
   const assistant = addAssistantRow();
-  assistant.text.textContent = row.assistantText || "";
+  if (row.assistantText) appendMarkdown(assistant, row.assistantText);
   if (row.outcome) setOutcome(assistant.root, row.outcome);
 }
 
@@ -136,8 +155,8 @@ async function streamInto(assistant: MessageRow, start: (ch: Channel<TurnProgres
   const ch = new Channel<TurnProgress>();
   const pendingPromise = start(ch);
   for await (const ev of ch) {
-    if (ev.kind === "text") {
-      assistant.text.textContent += ev.text;
+    if (ev.kind === "text" && typeof ev.text === "string") {
+      appendMarkdown(assistant, ev.text);
       scrollToBottom();
     } else if (ev.kind === "outcome" && ev.outcome) {
       setOutcome(assistant.root, ev.outcome);

@@ -98,6 +98,53 @@ h1 {
 .pill.REMOTE_UNCERTAIN { color: #d97706; }
 .pill.error { color: var(--danger); }
 
+/* Rendered model markdown (streamed into .msg.assistant). */
+.msg-text.markdown > :first-child { margin-top: 0; }
+.msg-text.markdown > :last-child { margin-bottom: 0; }
+.msg-text.markdown h1,
+.msg-text.markdown h2,
+.msg-text.markdown h3,
+.msg-text.markdown h4 {
+  margin: 0.6em 0 0.3em;
+  line-height: 1.3;
+}
+.msg-text.markdown p { margin: 0.4em 0; }
+.msg-text.markdown ul,
+.msg-text.markdown ol { margin: 0.4em 0; padding-left: 1.4em; }
+.msg-text.markdown li { margin: 0.15em 0; }
+.msg-text.markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.msg-text.markdown pre {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  border-radius: 8px;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+}
+.msg-text.markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+.msg-text.markdown blockquote {
+  margin: 0.4em 0;
+  padding-left: 0.8em;
+  border-left: 3px solid color-mix(in srgb, var(--muted) 45%, transparent);
+  color: var(--muted);
+}
+.msg-text.markdown a { color: var(--accent); }
+.msg-text.markdown table { border-collapse: collapse; margin: 0.4em 0; }
+.msg-text.markdown th,
+.msg-text.markdown td {
+  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+  padding: 0.25em 0.6em;
+}
+.msg-text.markdown hr { border: none; border-top: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); }
+
 #composer {
   display: flex;
   gap: 0.5rem;
