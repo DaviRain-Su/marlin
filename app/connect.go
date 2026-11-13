@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -13,18 +14,51 @@ import (
 	"marlin-desktop/sidecar"
 )
 
-// hostBinaryPath resolves the sidecar binary: MARLIN_HOST_BIN first, then
-// .mygo/devhost (built by `bun run dev`). Empty means the app runs without a
-// host and the page shows the offline banner.
+// hostBinaryPath resolves the sidecar binary, in order: MARLIN_HOST_BIN,
+// the packaged app's resources (next to the executable or the Resources
+// directory of a macOS bundle), then .mygo/devhost (built by `bun run dev`).
+// Empty means the app runs without a host and the page shows the offline
+// banner.
 func hostBinaryPath() string {
 	if p := os.Getenv("MARLIN_HOST_BIN"); p != "" {
 		return p
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		for _, candidate := range []string{
+			filepath.Join(dir, "marlin-host"),
+			filepath.Join(dir, "..", "Resources", "marlin-host"),
+		} {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
 	}
 	p := ".mygo/devhost"
 	if _, err := os.Stat(p); err == nil {
 		return p
 	}
 	return ""
+}
+
+// hostOptions assembles the spawn options for one host start: the binary,
+// the model route (config file if present, else the dev env), and the
+// session binding.
+func hostOptions(bin string) sidecar.Options {
+	opts := sidecar.Options{Binary: bin}
+	if cfgPath, err := sidecar.DefaultConfigPath(); err == nil {
+		if _, err := sidecar.LoadConfig(cfgPath); err == nil {
+			// The host applies the config itself; the sidecar only hands
+			// over the path and leaves the session binding to the host.
+			opts.ExtraArgs = append(opts.ExtraArgs, "--config", cfgPath)
+			return opts
+		} else {
+			slog.Warn("host config unreadable; falling back to env credentials", "path", cfgPath, "err", err)
+		}
+	}
+	// Dev path: no config file — devhost reads provider env/flags itself.
+	opts.ExtraArgs = append(opts.ExtraArgs, "--provider", hostProvider())
+	return opts
 }
 
 // hostProvider resolves which model gateway the dev host should use.
@@ -56,11 +90,9 @@ func Connect(chat *ChatService, win *mygo.Window) {
 
 	emit(ConnState{State: "starting"})
 	failures := 0
+	opts := hostOptions(bin)
 	for {
-		h, err := sidecar.Start(ctx, sidecar.Options{
-			Binary:    bin,
-			ExtraArgs: []string{"--provider", hostProvider()},
-		})
+		h, err := sidecar.Start(ctx, opts)
 		if err != nil {
 			failures++
 			if failures >= 5 {

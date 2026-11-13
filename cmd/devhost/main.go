@@ -23,6 +23,7 @@ import (
 	"syscall"
 
 	"marlin-desktop/fakehost"
+	"marlin-desktop/sidecar"
 )
 
 // loadDotEnv sets KEY=VALUE pairs from path for variables not already in the
@@ -62,31 +63,59 @@ func main() {
 	loadDotEnv(".env.local")
 
 	bindAddr := flag.String("bind-addr", "127.0.0.1:0", "HTTP/2 listen address")
-	authToken := flag.String("auth-token", "", "required token; empty disables auth (loopback dev only)")
-	sessionID := flag.String("session-id", "gui-session", "Session ID reported by GetCapabilities")
-	provider := flag.String("provider", "echo", "model gateway: echo | deepseek | kimi")
+	authToken := flag.String("auth-token", "", "required token; empty falls back to the MARLIN_HOST_AUTH_TOKEN environment (loopback dev only)")
+	sessionID := flag.String("session-id", "", "Session ID reported by GetCapabilities (default: config file, else gui-session)")
+	provider := flag.String("provider", "", "model gateway: echo | deepseek | kimi (default: config file, else echo)")
 	baseURL := flag.String("base-url", "", "provider base URL (defaults per provider)")
 	model := flag.String("model", "", "model name (defaults per provider)")
+	cfgPath := flag.String("config", "", "flat TOML host config (provider/api_key/base_url/model/session_id)")
 	probe := flag.Bool("probe", false, "send one real gateway call ('ping') and exit")
 	flag.Parse()
 
+	// The sidecar passes the one-time token through the environment; the
+	// flag stays for manual runs.
+	if *authToken == "" {
+		*authToken = os.Getenv(sidecar.TokenEnv)
+	}
+
+	// Flag > config file > environment/default, in that order.
+	var cfg sidecar.HostConfig
+	if *cfgPath != "" {
+		var err error
+		if cfg, err = sidecar.LoadConfig(*cfgPath); err != nil {
+			log.Fatalf("config: %v", err)
+		}
+	}
+	providerName := or(*provider, cfg.Provider, "echo")
+	baseURLFlag := *baseURL
+	modelFlag := *model
+	envKey := func(names ...string) string {
+		if cfg.APIKey != "" {
+			return cfg.APIKey
+		}
+		return firstEnv(names...)
+	}
+
 	var gateway fakehost.ChatGateway
-	switch *provider {
+	switch providerName {
 	case "deepseek":
-		base := or(*baseURL, "https://api.deepseek.com")
-		gateway = newGateway(os.Getenv("DEEPSEEK_API_KEY"), base, or(*model, "deepseek-chat"),
+		base := or(baseURLFlag, cfg.BaseURL, "https://api.deepseek.com")
+		gateway = newGateway(envKey("DEEPSEEK_API_KEY"), base, or(modelFlag, cfg.Model, "deepseek-chat"),
 			func(key, base, model string) fakehost.ChatGateway {
 				return &fakehost.DeepSeekGateway{BaseURL: base, APIKey: key, Model: model}
-			}, "DEEPSEEK_API_KEY", *provider)
+			}, "DEEPSEEK_API_KEY", providerName)
 	case "kimi", "anthropic":
-		base := or(*baseURL, or(firstEnv("ANTHROPIC_BASE_URL"), "https://api.kimi.com/coding/"))
-		m := or(*model, or(firstEnv("KIMI_MODEL", "ANTHROPIC_MODEL", "CLAUDE_CODE_MODEL"), "k3"))
-		gateway = newGateway(firstEnv("KIMI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"), base, m,
+		base := or(baseURLFlag, cfg.BaseURL, firstEnv("ANTHROPIC_BASE_URL"), "https://api.kimi.com/coding/")
+		m := or(modelFlag, cfg.Model, or(firstEnv("KIMI_MODEL", "ANTHROPIC_MODEL", "CLAUDE_CODE_MODEL"), "k3"))
+		gateway = newGateway(envKey("KIMI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"), base, m,
 			func(key, base, model string) fakehost.ChatGateway {
 				return &fakehost.AnthropicGateway{BaseURL: base, APIKey: key, Model: model}
-			}, "KIMI_API_KEY", *provider)
+			}, "KIMI_API_KEY", providerName)
 	default:
 		gateway = fakehost.EchoGateway{}
+	}
+	if *sessionID == "" {
+		*sessionID = or(cfg.SessionID, "gui-session")
 	}
 	h := fakehost.New(*sessionID)
 	h.SetGateway(gateway)
@@ -121,11 +150,13 @@ func main() {
 	}
 }
 
-func or(a, b string) string {
-	if a != "" {
-		return a
+func or(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
 	}
-	return b
+	return ""
 }
 
 // newGateway builds the provider gateway or falls back to echo when the key

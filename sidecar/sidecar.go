@@ -3,9 +3,10 @@
 // (docs/design.md §5).
 //
 // ASSUMPTION (§12.6 gap 2): the Rust host binary's CLI is not pinned upstream
-// yet. The default flags (--bind-addr / --auth-token / --session-id) match
-// cmd/devhost, our development stand-in; the Rust host must adopt the same
-// interface or Options must be adapted.
+// yet. The default flags (--bind-addr / --session-id) and the token
+// environment (MARLIN_HOST_AUTH_TOKEN) match cmd/devhost, our development
+// stand-in; the Rust host must adopt the same interface or Options must be
+// adapted.
 package sidecar
 
 import (
@@ -16,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -31,6 +33,8 @@ type Options struct {
 	ExtraArgs []string
 	// SessionID is passed to the host as --session-id.
 	SessionID string
+	// ExtraEnv are appended to the child's environment after the token.
+	ExtraEnv []string
 	// AuthToken overrides the generated one-time token (tests only).
 	AuthToken string
 	// ReadinessTimeout bounds the startup handshake; zero uses 10s.
@@ -43,6 +47,12 @@ type Options struct {
 	// Logger receives lifecycle events; nil discards.
 	Logger *slog.Logger
 }
+
+// TokenEnv is the environment variable that carries the one-time token to
+// the host process. The token never goes into argv: ps and friends would
+// expose it to every local user (design §5.2: token 只进子进程环境/argv，
+// 我们收紧为只用环境).
+const TokenEnv = "MARLIN_HOST_AUTH_TOKEN"
 
 // Host is a running sidecar host plus its verified client connection.
 type Host struct {
@@ -85,13 +95,21 @@ func Start(ctx context.Context, opts Options) (*Host, error) {
 
 	args := []string{
 		"--bind-addr", addr,
-		"--auth-token", token,
 		"--session-id", opts.SessionID,
 	}
 	args = append(args, opts.ExtraArgs...)
 	cmd := exec.Command(opts.Binary, args...)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
+	if cmd.Stdout == nil {
+		cmd.Stdout = os.Stdout
+	}
+	if cmd.Stderr == nil {
+		cmd.Stderr = os.Stderr
+	}
+	// The token travels in the child's environment only. A clean base env
+	// keeps secrets out of inherited exports.
+	cmd.Env = append([]string{TokenEnv + "=" + token}, opts.ExtraEnv...)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("sidecar: spawn %s: %w", opts.Binary, err)
 	}
