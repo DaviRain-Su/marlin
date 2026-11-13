@@ -9,9 +9,48 @@
   <body>
     <main>
       <header>
-        <h1>Marlin</h1>
+        <div class="header-row">
+          <h1>Marlin</h1>
+          <button id="settings-toggle" type="button" class="ghost" title="Settings">⚙ Settings</button>
+        </div>
         <div id="banner" class="banner hidden"></div>
       </header>
+      <aside id="settings" class="settings hidden">
+        <div class="settings-row">
+          <label>Provider
+            <select id="set-provider">
+              <option value="kimi">kimi (Anthropic 协议)</option>
+              <option value="deepseek">deepseek (OpenAI 协议)</option>
+            </select>
+          </label>
+          <label>Model
+            <input id="set-model" placeholder="k3 / deepseek-chat，留空用默认" autocomplete="off" />
+          </label>
+        </div>
+        <div class="settings-row">
+          <label>API Key
+            <input id="set-key" type="password" placeholder="" autocomplete="new-password" />
+          </label>
+          <label>Base URL
+            <input id="set-base-url" placeholder="留空用 provider 默认端点" autocomplete="off" />
+          </label>
+        </div>
+        <div class="settings-row">
+          <label>工具目录（tools_workspace，留空禁用工具）
+            <input id="set-tools-workspace" placeholder="/path/to/workspace" autocomplete="off" />
+          </label>
+          <label>工具白名单（tools_allow）
+            <input id="set-tools-allow" placeholder="* = 全部" autocomplete="off" />
+          </label>
+        </div>
+        <div class="settings-actions">
+          <span id="settings-hint" class="hint"></span>
+          <span class="spacer"></span>
+          <button id="settings-save" type="button">保存</button>
+          <button id="settings-apply" type="button" class="primary">保存并重启 host</button>
+        </div>
+        <div id="settings-path" class="hint"></div>
+      </aside>
       <div id="messages" aria-live="polite"></div>
       <form id="composer">
         <input id="draft" placeholder="Message Marlin…" autocomplete="off" autofocus />

@@ -1,7 +1,7 @@
 import { Channel } from "mygo-runtime";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { ChatService, events, type StoredTurn, type TurnProgress } from "./mygo";
+import { ChatService, SettingsService, events, type StoredTurn, type TurnProgress } from "./mygo";
 
 // Model output is untrusted content rendered inside the page that holds the
 // Go IPC bridge — sanitize aggressively before it becomes HTML.
@@ -20,6 +20,17 @@ const draft = $<HTMLInputElement>("#draft");
 const sendBtn = $<HTMLButtonElement>("#send");
 const stopBtn = $<HTMLButtonElement>("#stop");
 const banner = $("#banner");
+
+// Settings panel elements.
+const settingsPanel = $("#settings");
+const setProvider = $<HTMLSelectElement>("#set-provider");
+const setModel = $<HTMLInputElement>("#set-model");
+const setKey = $<HTMLInputElement>("#set-key");
+const setBaseUrl = $<HTMLInputElement>("#set-base-url");
+const setToolsWorkspace = $<HTMLInputElement>("#set-tools-workspace");
+const setToolsAllow = $<HTMLInputElement>("#set-tools-allow");
+const settingsHint = $("#settings-hint");
+const settingsPath = $("#settings-path");
 
 let busy = false;
 let ready = false;
@@ -192,6 +203,64 @@ stopBtn.addEventListener("click", () => {
   void ChatService.stop().catch((err) => {
     showBanner("error", `stop failed: ${err instanceof Error ? err.message : String(err)}`);
   });
+});
+
+// ---- Settings panel ----
+
+function setHint(text: string) {
+  settingsHint.textContent = text;
+}
+
+async function openSettings() {
+  settingsPanel.classList.remove("hidden");
+  setHint("加载中…");
+  try {
+    const snap = await SettingsService.state();
+    setProvider.value = snap.provider || "kimi";
+    setModel.value = snap.model || "";
+    setBaseUrl.value = snap.baseUrl || "";
+    setToolsWorkspace.value = snap.toolsWorkspace || "";
+    setToolsAllow.value = snap.toolsAllow || "";
+    // The stored credential is never sent to the page; an empty field
+    // keeps it.
+    setKey.value = "";
+    setKey.placeholder = snap.keyConfigured ? "已配置（输入新值以更换）" : "未配置";
+    settingsPath.textContent = `配置文件：${snap.configPath}`;
+    setHint(snap.hostRunning ? "" : "host 未运行，保存后将于下次启动生效");
+  } catch (err) {
+    setHint(`读取失败：${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function settingsInput() {
+  return {
+    provider: setProvider.value,
+    model: setModel.value.trim(),
+    baseUrl: setBaseUrl.value.trim(),
+    apiKey: setKey.value,
+    toolsWorkspace: setToolsWorkspace.value.trim(),
+    toolsAllow: setToolsAllow.value.trim(),
+  };
+}
+
+document.querySelector("#settings-toggle")!.addEventListener("click", () => {
+  if (settingsPanel.classList.contains("hidden")) void openSettings();
+  else settingsPanel.classList.add("hidden");
+});
+
+document.querySelector("#settings-save")!.addEventListener("click", () => {
+  void SettingsService.save(settingsInput())
+    .then(() => setHint("已保存。host 重启后生效（点「保存并重启 host」立即生效）。"))
+    .catch((err) => setHint(`保存失败：${err instanceof Error ? err.message : String(err)}`));
+});
+
+document.querySelector("#settings-apply")!.addEventListener("click", () => {
+  void (async () => {
+    setHint("保存并重启 host…");
+    await SettingsService.save(settingsInput());
+    await SettingsService.apply();
+    setHint("已保存，host 正在用新配置重启。");
+  })().catch((err) => setHint(`失败：${err instanceof Error ? err.message : String(err)}`));
 });
 
 // Startup: render the persisted projection, then let the snapshot decide

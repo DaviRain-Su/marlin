@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -61,6 +62,31 @@ func hostOptions(bin string) sidecar.Options {
 	return opts
 }
 
+// currentHost tracks the running sidecar host so the settings service can
+// restart it after a config change. The Connect supervisor owns the
+// lifecycle; this only holds a handle.
+var currentHost struct {
+	sync.Mutex
+	h *sidecar.Host
+}
+
+func hostRunning() bool {
+	currentHost.Lock()
+	defer currentHost.Unlock()
+	return currentHost.h != nil
+}
+
+// RestartHost stops the running host; the Connect supervisor respawns it
+// with the current config (design §5.2 restart-on-exit).
+func RestartHost() {
+	currentHost.Lock()
+	h := currentHost.h
+	currentHost.Unlock()
+	if h != nil {
+		h.Stop() // Exited closes → the supervisor loop respawns
+	}
+}
+
 // hostProvider resolves which model gateway the dev host should use.
 // MARLIN_HOST_PROVIDER overrides; the dev default is kimi. This flag belongs
 // to devhost's CLI; the real Rust host reads its route config host-side.
@@ -104,6 +130,7 @@ func Connect(chat *ChatService, win *mygo.Window) {
 			continue
 		}
 		failures = 0
+		setCurrentHost(h)
 
 		// Bind the projection store to this Session (a different binding
 		// clears the view; design §6.6).
@@ -122,10 +149,25 @@ func Connect(chat *ChatService, win *mygo.Window) {
 		watchUnresolved(ctx, mgr, emit)
 
 		<-h.Exited // the host process died; the turn state lives in its journal
+		clearCurrentHost(h)
 		chat.setManager(nil)
 		emit(ConnState{State: "reconnecting", Message: "host exited; restarting"})
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func setCurrentHost(h *sidecar.Host) {
+	currentHost.Lock()
+	currentHost.h = h
+	currentHost.Unlock()
+}
+
+func clearCurrentHost(h *sidecar.Host) {
+	currentHost.Lock()
+	if currentHost.h == h {
+		currentHost.h = nil
+	}
+	currentHost.Unlock()
 }
 
 // watchUnresolved surfaces the recovery states the protocol can leave a

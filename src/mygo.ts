@@ -22,6 +22,40 @@ export interface ConnState {
 }
 
 /**
+ * SettingsInput is one save from the page. An empty APIKey keeps the
+ * stored credential ("" is indistinguishable from "unchanged" over the
+ * wire; clearing a key means switching to env credentials, done by
+ * editing the file).
+ */
+export interface SettingsInput {
+  provider: string;
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  toolsWorkspace?: string;
+  toolsAllow?: string;
+}
+
+/**
+ * SettingsSnapshot is what the settings page reads: the effective config
+ * with the credential masked (the page can set a key but never read one).
+ */
+export interface SettingsSnapshot {
+  configPath: string;
+  provider: string;
+  model?: string;
+  baseUrl?: string;
+  toolsWorkspace?: string;
+  toolsAllow?: string;
+  keyConfigured: boolean;
+  /**
+   * HostRunning reflects whether a config change would need a restart to
+   * take effect (false: it applies at the next host start anyway).
+   */
+  hostRunning: boolean;
+}
+
+/**
  * Snapshot is the session state the page pulls at startup and after
  * reconnection banners.
  */
@@ -95,6 +129,29 @@ export const ChatService = {
   /** Stop requests cancellation of the active turn and returns its receipt. */
   stop(): Promise<CancelInfo> {
     return call("ChatService.Stop");
+  },
+} as const;
+
+/**
+ * SettingsService is bound to the frontend: SettingsService.state / save /
+ * apply. It owns the user-level app-sidecar.toml (design §5.2); the host
+ * picks up changes on its next start.
+ */
+export const SettingsService = {
+  /** Apply restarts the host so the saved config takes effect immediately. */
+  apply(): Promise<void> {
+    return call("SettingsService.Apply");
+  },
+  /**
+   * Save merges the input into the config file. Provider is validated: the
+   * host only routes kimi and deepseek (echo needs no credential).
+   */
+  save(in_: SettingsInput): Promise<void> {
+    return call("SettingsService.Save", in_);
+  },
+  /** State reads the current config with the credential masked. */
+  state(): Promise<SettingsSnapshot> {
+    return call("SettingsService.State");
   },
 } as const;
 

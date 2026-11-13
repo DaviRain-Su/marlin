@@ -21,9 +21,20 @@ func storePath() string {
 	return filepath.Join(d, "session.json")
 }
 
+// configPath is the host config the settings UI edits:
+// <config>/marlin-desktop/app-sidecar.toml.
+func configPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	return filepath.Join(dir, "marlin-desktop", "app-sidecar.toml")
+}
+
 func main() {
 	chat := app.NewChatService(app.LoadStore(storePath()))
 	mygo.Bind(chat)
+	mygo.Bind(app.NewSettingsService(configPath()))
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{

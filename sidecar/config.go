@@ -102,6 +102,42 @@ func LoadConfig(path string) (HostConfig, error) {
 	return c, nil
 }
 
+// SaveConfig writes c as a flat TOML file (0600), atomically via temp file
+// + rename. Empty fields are omitted so defaults and env fallbacks apply.
+func SaveConfig(path string, c HostConfig) error {
+	var b strings.Builder
+	b.WriteString("# Written by the Marlin settings UI. Keys read by the packaged host.\n")
+	field := func(key, value string) {
+		if value != "" {
+			fmt.Fprintf(&b, "%s = %q\n", key, value)
+		}
+	}
+	field("provider", c.Provider)
+	field("protocol", c.Protocol)
+	field("auth", c.Auth)
+	field("api_key", c.APIKey)
+	field("base_url", c.BaseURL)
+	field("model", c.Model)
+	field("session_id", c.SessionID)
+	field("storage_path", c.StoragePath)
+	field("tools_workspace", c.ToolsWorkspace)
+	field("tools_allow", c.ToolsAllow)
+
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("sidecar: config dir: %w", err)
+		}
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
+		return fmt.Errorf("sidecar: write config: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("sidecar: rename config: %w", err)
+	}
+	return nil
+}
+
 // WriteConfigTemplate writes a commented template (no credentials) so a
 // fresh machine has something to fill in. Never overwrite an existing file.
 func WriteConfigTemplate(path string) error {
