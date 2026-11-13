@@ -2,41 +2,15 @@ package main
 
 import (
 	"log"
-	"runtime"
-	"time"
 
 	"github.com/egoist/mygo"
+
+	"marlin-desktop/app"
 )
 
-// Greeter is callable from the frontend: `mygo generate` turns its methods
-// into typed TypeScript functions in src/mygo.ts.
-type Greeter struct{}
-
-// Greet returns a greeting for name.
-func (Greeter) Greet(name string) string {
-	if name == "" {
-		name = "stranger"
-	}
-	return "Hello, " + name + "! This message comes from Go."
-}
-
-// SystemInfo describes the machine the app runs on.
-type SystemInfo struct {
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	GoVersion string `json:"goVersion"`
-}
-
-// Info returns information about the system.
-func (Greeter) Info() SystemInfo {
-	return SystemInfo{OS: runtime.GOOS, Arch: runtime.GOARCH, GoVersion: runtime.Version()}
-}
-
-// Tick is sent to the page every second.
-var Tick = mygo.NewEvent[time.Time]("tick")
-
 func main() {
-	mygo.Bind(Greeter{})
+	chat := app.NewChatService()
+	mygo.Bind(chat)
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
@@ -49,16 +23,12 @@ func main() {
 			// Opens where the user left it last time.
 			StateKey: "main",
 			// The frontend: devUrl during `mygo dev`, frontendDist
-			// embedded by `mygo build` otherwise (see mygo.json).
+			// embedded by `mygo build` otherwise (see mygo.config.ts).
 			URL: "/",
 		})
-		go func() {
-			for t := range time.Tick(time.Second) {
-				if Tick.Emit(win, t) != nil {
-					return // the window was closed
-				}
-			}
-		}()
+		// The sidecar host lives for the app's lifetime; its journal keeps
+		// turns alive across its own restarts.
+		go app.Connect(chat, win)
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)

@@ -8,3 +8,4 @@ mygo_windows_*.syso
 /host-bin/
 *.test
 coverage.out
+.dev.log

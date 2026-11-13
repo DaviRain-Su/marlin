@@ -8,14 +8,16 @@
   </head>
   <body>
     <main>
-      <h1>Marlin</h1>
-      <p class="muted">Go ↔ TypeScript, fully typed.</p>
-      <form id="greet">
-        <input id="name" placeholder="Your name" autocomplete="off" autofocus />
-        <button type="submit">Greet</button>
+      <header>
+        <h1>Marlin</h1>
+        <div id="banner" class="banner hidden"></div>
+      </header>
+      <div id="messages" aria-live="polite"></div>
+      <form id="composer">
+        <input id="draft" placeholder="Message Marlin…" autocomplete="off" autofocus />
+        <button id="send" type="submit">Send</button>
+        <button id="stop" type="button" class="danger hidden">Stop</button>
       </form>
-      <p id="greeting" class="card"></p>
-      <p class="muted"><span id="info"></span> · <span id="clock">--:--:--</span></p>
     </main>
     <script type="module" src="./src/main.ts"></script>
   </body>
