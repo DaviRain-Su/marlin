@@ -13,7 +13,10 @@ export interface CancelInfo {
 
 /** ConnState drives the page's status banner. */
 export interface ConnState {
-  /** State: "starting" | "ready" | "reconnecting" | "offline" | "error". */
+  /**
+   * State: "starting" | "ready" | "reconnecting" | "offline" | "error" |
+   * "unresolved".
+   */
   state: string;
   message?: string;
 }
@@ -27,6 +30,24 @@ export interface Snapshot {
   sessionId?: string;
   afterTurn?: string;
   activeOrdinal?: string;
+  history?: StoredTurn[];
+  pendingText?: string;
+}
+
+/**
+ * StoredTurn is one turn in the local projection. Ordinal travels as a
+ * string (u64 over JSON, design doc §4).
+ */
+export interface StoredTurn {
+  ordinal: string;
+  userText: string;
+  assistantText?: string;
+  outcome?: string;
+  /**
+   * LastEventID is the applied cursor of this turn (design §6.4: the
+   * projection and its cursor are persisted together, as one record).
+   */
+  lastEventId?: string;
 }
 
 /**
@@ -46,14 +67,23 @@ export interface TurnProgress {
 // ---- Services ----
 
 /**
- * ChatService is bound to the frontend: Chat.send / Chat.stop / Chat.state
- * in the generated client.
+ * ChatService is bound to the frontend: ChatService.send / stop / state /
+ * resume in the generated client.
  */
 export const ChatService = {
   /**
+   * Resume re-admits the pending submission after a restart: the SAME id,
+   * text and original after_turn resolve to the original turn by idempotency
+   * (design §6.3). Nothing to do when no pending record exists.
+   */
+  resume(out: Channel<TurnProgress>): Promise<void> {
+    return call("ChatService.Resume", out);
+  },
+  /**
    * Send submits one user turn and streams the turn's visible events to out.
-   * On any failure the draft stays with the page (design §6.3). Closing the
-   * page cancels only the watch; the turn keeps executing in the host.
+   * The submission is persisted BEFORE the request goes out; on any failure
+   * the pending record stays and the draft returns to the page (design §6.3).
+   * Closing the page cancels only the watch; the turn keeps executing.
    */
   send(text: string, out: Channel<TurnProgress>): Promise<void> {
     return call("ChatService.Send", text, out);

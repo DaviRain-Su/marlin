@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo"
 
+	appv1 "marlin-desktop/gen/marlin/app/v1"
 	"marlin-desktop/client"
 	"marlin-desktop/sidecar"
 )
@@ -72,6 +73,11 @@ func Connect(chat *ChatService, win *mygo.Window) {
 		}
 		failures = 0
 
+		// Bind the projection store to this Session (a different binding
+		// clears the view; design §6.6).
+		if err := chat.store.BindSession(h.Caps.SessionID); err != nil {
+			slog.Warn("store bind failed", "err", err)
+		}
 		mgr := client.NewSessionManager(h.Conn(), h.Caps.SessionID)
 		// A fresh manager inherits the journal's latest committed turn so a
 		// host restart (or app reopen) does not resend stale after_turn.
@@ -81,9 +87,39 @@ func Connect(chat *ChatService, win *mygo.Window) {
 		chat.setManager(mgr)
 		emit(ConnState{State: "ready"})
 
+		watchUnresolved(ctx, mgr, emit)
+
 		<-h.Exited // the host process died; the turn state lives in its journal
 		chat.setManager(nil)
 		emit(ConnState{State: "reconnecting", Message: "host exited; restarting"})
 		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// watchUnresolved surfaces the recovery states the protocol can leave a
+// session in (design §6.5/§6.6): while the outcome is unresolved or a tool
+// continuation is pending, new work is blocked; the banner stays until the
+// session resolves.
+func watchUnresolved(ctx context.Context, mgr *client.SessionManager, emit func(ConnState)) {
+	s, err := mgr.Summary(ctx)
+	if err != nil {
+		return // the ready banner already reflects usable state
+	}
+	if s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED &&
+		s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_TOOL_CONTINUATION_PENDING {
+		return
+	}
+	emit(ConnState{State: "unresolved", Message: "上次的结果不确定，等待恢复；已暂停新消息"})
+	for {
+		time.Sleep(2 * time.Second)
+		s, err := mgr.Summary(ctx)
+		if err != nil {
+			continue
+		}
+		if s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED &&
+			s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_TOOL_CONTINUATION_PENDING {
+			emit(ConnState{State: "ready"})
+			return
+		}
 	}
 }

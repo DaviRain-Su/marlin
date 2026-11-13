@@ -1,5 +1,5 @@
 import { Channel } from "mygo-runtime";
-import { ChatService, events, type TurnProgress } from "./mygo";
+import { ChatService, events, type StoredTurn, type TurnProgress } from "./mygo";
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
@@ -28,28 +28,45 @@ function showBanner(state: string, message?: string) {
   setComposer();
 }
 
-// Reconnect banners arrive as events; the initial pull covers app startup.
-events.status.on((s) => showBanner(s.state, s.message));
+// Reconnect / unresolved banners arrive as events; the initial pull covers
+// app startup. A fresh "ready" re-renders from the persisted projection
+// (host restarts must not blank the view).
+events.status.on((s) => {
+  showBanner(s.state, s.message);
+  if (s.state === "ready") void renderHistory();
+});
 
 interface MessageRow {
   root: HTMLElement;
   text: HTMLElement;
-  pill: HTMLElement | null;
 }
 
-function addMessage(role: "user" | "assistant"): MessageRow {
+function addUserRow(text: string): MessageRow {
   const root = document.createElement("div");
-  root.className = `msg ${role}`;
-  const text = document.createElement("div");
-  text.className = "msg-text";
-  text.style.whiteSpace = "pre-wrap";
-  root.appendChild(text);
+  root.className = "msg user";
+  const body = document.createElement("div");
+  body.className = "msg-text";
+  body.style.whiteSpace = "pre-wrap";
+  body.textContent = text;
+  root.appendChild(body);
   messages.appendChild(root);
-  messages.scrollTop = messages.scrollHeight;
-  return { root, text, pill: null };
+  scrollToBottom();
+  return { root, text: body };
 }
 
-function setOutcome(row: MessageRow, outcome: string) {
+function addAssistantRow(): MessageRow {
+  const root = document.createElement("div");
+  root.className = "msg assistant";
+  const body = document.createElement("div");
+  body.className = "msg-text";
+  body.style.whiteSpace = "pre-wrap";
+  root.appendChild(body);
+  messages.appendChild(root);
+  scrollToBottom();
+  return { root, text: body };
+}
+
+function setOutcome(row: HTMLElement, outcome: string) {
   const pill = document.createElement("div");
   pill.className = `pill ${outcome}`;
   pill.textContent =
@@ -60,20 +77,73 @@ function setOutcome(row: MessageRow, outcome: string) {
         : outcome === "REJECTED_BEFORE_DISPATCH"
           ? "refused before dispatch"
           : outcome.toLowerCase();
-  row.root.appendChild(pill);
-  row.pill = pill;
+  row.appendChild(pill);
 }
 
-function setError(row: MessageRow, err: unknown) {
-  row.text.textContent ||= " ";
+function setError(row: HTMLElement, err: unknown) {
   const pill = document.createElement("div");
   pill.className = "pill error";
   pill.textContent = `send failed: ${err instanceof Error ? err.message : String(err)}`;
-  row.root.appendChild(pill);
+  row.appendChild(pill);
 }
 
 function scrollToBottom() {
   messages.scrollTop = messages.scrollHeight;
+}
+
+function renderStoredTurn(row: StoredTurn) {
+  addUserRow(row.userText);
+  const assistant = addAssistantRow();
+  assistant.text.textContent = row.assistantText || "";
+  if (row.outcome) setOutcome(assistant.root, row.outcome);
+}
+
+async function renderHistory() {
+  const snap = await ChatService.state();
+  messages.replaceChildren();
+  for (const row of snap.history ?? []) renderStoredTurn(row);
+  scrollToBottom();
+  if (snap.pendingText) await resumePending(snap.pendingText);
+}
+
+// resumePending re-admits the submission whose response was lost: the same
+// id + original after_turn resolve to the original turn by idempotency.
+async function resumePending(pendingText: string) {
+  if (busy) return;
+  busy = true;
+  setComposer();
+  addUserRow(pendingText);
+  const assistant = addAssistantRow();
+  const note = document.createElement("div");
+  note.className = "pill";
+  note.textContent = "上次发送未确认，正在恢复…";
+  assistant.root.appendChild(note);
+  scrollToBottom();
+  try {
+    await streamInto(assistant, (ch) => ChatService.resume(ch));
+    note.remove();
+  } catch (err) {
+    setError(assistant.root, err);
+    note.remove();
+  } finally {
+    busy = false;
+    setComposer();
+  }
+}
+
+// streamInto drives one channel to completion against a row.
+async function streamInto(assistant: MessageRow, start: (ch: Channel<TurnProgress>) => Promise<void>) {
+  const ch = new Channel<TurnProgress>();
+  const pendingPromise = start(ch);
+  for await (const ev of ch) {
+    if (ev.kind === "text") {
+      assistant.text.textContent += ev.text;
+      scrollToBottom();
+    } else if (ev.kind === "outcome" && ev.outcome) {
+      setOutcome(assistant.root, ev.outcome);
+    }
+  }
+  await pendingPromise;
 }
 
 $("#composer").addEventListener("submit", async (e) => {
@@ -84,24 +154,14 @@ $("#composer").addEventListener("submit", async (e) => {
 
   busy = true;
   setComposer();
-  addMessage("user").text.textContent = text;
-  const assistant = addMessage("assistant");
+  addUserRow(text);
+  const assistant = addAssistantRow();
   scrollToBottom();
 
-  const ch = new Channel<TurnProgress>();
   try {
-    const sending = ChatService.send(text, ch);
-    for await (const ev of ch) {
-      if (ev.kind === "text") {
-        assistant.text.textContent += ev.text;
-        scrollToBottom();
-      } else if (ev.kind === "outcome" && ev.outcome) {
-        setOutcome(assistant, ev.outcome);
-      }
-    }
-    await sending;
+    await streamInto(assistant, (ch) => ChatService.send(text, ch));
   } catch (err) {
-    setError(assistant, err);
+    setError(assistant.root, err);
     draft.value = text; // the draft comes back: the host never admitted it
   } finally {
     busy = false;
@@ -115,8 +175,10 @@ stopBtn.addEventListener("click", () => {
   });
 });
 
-// Startup: pull the current snapshot (status events cover later changes).
+// Startup: render the persisted projection, then let the snapshot decide
+// whether a pending submission needs resuming.
 const snap = await ChatService.state();
+await renderHistory();
 if (snap.ready) showBanner("ready");
 else showBanner("starting", "waiting for the Marlin host…");
 setComposer();

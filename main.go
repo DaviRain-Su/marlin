@@ -2,14 +2,27 @@ package main
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/egoist/mygo"
 
 	"marlin-desktop/app"
 )
 
+// storePath is the projection file: <config>/marlin-desktop/session.json.
+func storePath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	d := filepath.Join(dir, "marlin-desktop")
+	_ = os.MkdirAll(d, 0o700)
+	return filepath.Join(d, "session.json")
+}
+
 func main() {
-	chat := app.NewChatService()
+	chat := app.NewChatService(app.LoadStore(storePath()))
 	mygo.Bind(chat)
 
 	mygo.App.WhenReady(func() {

@@ -85,18 +85,26 @@ func (m *SessionManager) AfterTurn() uint64 {
 	return m.afterTurn
 }
 
-// Send submits one user turn. Transient failures (host unreachable, lost
-// admission race) retry the EXACT request with the same submission_id —
-// idempotent by contract (design §6.3). The caller persists the draft and
-// submission_id before calling; a refusal keeps that record intact.
+// Send submits one user turn at the current watermark. Transient failures
+// (host unreachable, lost admission race) retry the EXACT request with the
+// same submission_id — idempotent by contract (design §6.3). The caller
+// persists the draft and submission_id before calling; a refusal keeps that
+// record intact.
 func (m *SessionManager) Send(ctx context.Context, submissionID, userText string) (TurnRef, error) {
+	return m.SendExact(ctx, submissionID, userText, m.AfterTurn())
+}
+
+// SendExact is Send with an explicit after_turn — used to resume a pending
+// submission whose ORIGINAL after_turn is the idempotency key's other half
+// (design §6.3: a retry keeps the original fields even if the view advanced).
+func (m *SessionManager) SendExact(ctx context.Context, submissionID, userText string, afterTurn uint64) (TurnRef, error) {
 	c := appv1.NewAppServerClient(m.conn.GRPC())
 
 	// Bind this submission to its original inputs for every later retry.
 	m.mu.Lock()
 	p, retrying := m.records[submissionID]
 	if !retrying {
-		p = pendingSubmission{text: userText, afterTurn: m.afterTurn}
+		p = pendingSubmission{text: userText, afterTurn: afterTurn}
 		m.records[submissionID] = p
 	}
 	m.mu.Unlock()
