@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,20 +7,54 @@
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <div class="header-row">
-          <h1>Marlin</h1>
-          <button id="settings-toggle" type="button" class="ghost" title="Settings">⚙ Settings</button>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="brand"><span class="brand-mark">✳</span>Marlin</div>
+        <div class="side-card">
+          <div class="status-line">
+            <span id="status-dot" class="dot" data-state="starting"></span>
+            <span id="status-text">连接中…</span>
+          </div>
+          <button id="chip-provider" type="button" class="chip" title="点击修改模型设置">—</button>
+          <button id="chip-tools" type="button" class="chip" title="点击修改工具设置">—</button>
         </div>
+        <div class="side-bottom">
+          <button id="settings-toggle" type="button" class="side-btn">⚙&nbsp;设置</button>
+          <div class="side-note">单会话 · 历史持久化</div>
+        </div>
+      </aside>
+      <main>
         <div id="banner" class="banner hidden"></div>
-      </header>
-      <aside id="settings" class="settings hidden">
+        <div id="empty" class="empty">
+          <div class="greet-mark">✳</div>
+          <h2 id="greeting">你好</h2>
+          <p class="empty-sub">向 Marlin 提问。工具调用只在设置里指定的目录内执行。</p>
+        </div>
+        <div id="messages" aria-live="polite"></div>
+        <form id="composer">
+          <div class="composer-card">
+            <textarea id="draft" rows="1" placeholder="给 Marlin 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
+            <div class="composer-actions">
+              <button type="button" id="composer-chip" class="chip">—</button>
+              <span class="spacer"></span>
+              <button id="stop" type="button" class="stop-btn hidden" title="停止生成">■</button>
+              <button id="send" type="submit" title="发送">↑</button>
+            </div>
+          </div>
+        </form>
+      </main>
+    </div>
+    <div id="settings-overlay" class="overlay hidden">
+      <div id="settings" class="settings" role="dialog" aria-modal="true">
+        <div class="settings-head">
+          <h3>设置</h3>
+          <button id="settings-close" type="button" class="side-btn" title="关闭">✕</button>
+        </div>
         <div class="settings-row">
           <label>Provider
             <select id="set-provider">
-              <option value="kimi">kimi (Anthropic 协议)</option>
-              <option value="deepseek">deepseek (OpenAI 协议)</option>
+              <option value="kimi">kimi（Anthropic 协议）</option>
+              <option value="deepseek">deepseek（OpenAI 协议）</option>
             </select>
           </label>
           <label>Model
@@ -36,10 +70,10 @@
           </label>
         </div>
         <div class="settings-row">
-          <label>工具目录（tools_workspace，留空禁用工具）
+          <label>工具目录（留空禁用工具）
             <input id="set-tools-workspace" placeholder="/path/to/workspace" autocomplete="off" />
           </label>
-          <label>工具白名单（tools_allow）
+          <label>工具白名单
             <input id="set-tools-allow" placeholder="* = 全部" autocomplete="off" />
           </label>
         </div>
@@ -50,14 +84,8 @@
           <button id="settings-apply" type="button" class="primary">保存并重启 host</button>
         </div>
         <div id="settings-path" class="hint"></div>
-      </aside>
-      <div id="messages" aria-live="polite"></div>
-      <form id="composer">
-        <input id="draft" placeholder="Message Marlin…" autocomplete="off" autofocus />
-        <button id="send" type="submit">Send</button>
-        <button id="stop" type="button" class="danger hidden">Stop</button>
-      </form>
-    </main>
+      </div>
+    </div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
