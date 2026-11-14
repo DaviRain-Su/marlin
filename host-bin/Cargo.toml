@@ -11,16 +11,16 @@ publish = false
 # proto (see scripts/vendor-proto.sh) so the wire contract cannot drift.
 
 [dependencies]
-marlin-agent-app-server = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656", features = [
+marlin-agent-app-server = { git = "https://github.com/tao3k/marlin-agent-core", rev = "e409fa63a6cfd2bba492d44392c8c0f9848ab284", features = [
     "grpc",
 ] }
-marlin-agent-protocol = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
-marlin-agent-runtime = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
-marlin-agent-sessions = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
-marlin-agent-storage = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656", features = [
+marlin-agent-protocol = { git = "https://github.com/tao3k/marlin-agent-core", rev = "e409fa63a6cfd2bba492d44392c8c0f9848ab284" }
+marlin-agent-runtime = { git = "https://github.com/tao3k/marlin-agent-core", rev = "e409fa63a6cfd2bba492d44392c8c0f9848ab284" }
+marlin-agent-sessions = { git = "https://github.com/tao3k/marlin-agent-core", rev = "e409fa63a6cfd2bba492d44392c8c0f9848ab284" }
+marlin-agent-storage = { git = "https://github.com/tao3k/marlin-agent-core", rev = "e409fa63a6cfd2bba492d44392c8c0f9848ab284", features = [
     "turso",
 ] }
-marlin-agent-stream = { git = "https://github.com/tao3k/marlin-agent-core", rev = "c33fffa15c2a8864511c96b9231bf28508480656" }
+marlin-agent-stream = { git = "https://github.com/tao3k/marlin-agent-core", rev = "e409fa63a6cfd2bba492d44392c8c0f9848ab284" }
 weaver-llm = { git = "https://github.com/hardenedlinux/weaver", rev = "2cbb6bf7c6bcfddccde5105b809739323fa29d50" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }

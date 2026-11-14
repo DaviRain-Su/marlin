@@ -25,6 +25,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type SessionOpenMode int32
+
+const (
+	SessionOpenMode_SESSION_OPEN_MODE_UNSPECIFIED SessionOpenMode = 0
+	SessionOpenMode_SESSION_OPEN_MODE_CREATE      SessionOpenMode = 1
+	SessionOpenMode_SESSION_OPEN_MODE_EXISTING    SessionOpenMode = 2
+)
+
+// Enum value maps for SessionOpenMode.
+var (
+	SessionOpenMode_name = map[int32]string{
+		0: "SESSION_OPEN_MODE_UNSPECIFIED",
+		1: "SESSION_OPEN_MODE_CREATE",
+		2: "SESSION_OPEN_MODE_EXISTING",
+	}
+	SessionOpenMode_value = map[string]int32{
+		"SESSION_OPEN_MODE_UNSPECIFIED": 0,
+		"SESSION_OPEN_MODE_CREATE":      1,
+		"SESSION_OPEN_MODE_EXISTING":    2,
+	}
+)
+
+func (x SessionOpenMode) Enum() *SessionOpenMode {
+	p := new(SessionOpenMode)
+	*p = x
+	return p
+}
+
+func (x SessionOpenMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SessionOpenMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_marlin_app_v1_app_server_proto_enumTypes[0].Descriptor()
+}
+
+func (SessionOpenMode) Type() protoreflect.EnumType {
+	return &file_marlin_app_v1_app_server_proto_enumTypes[0]
+}
+
+func (x SessionOpenMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SessionOpenMode.Descriptor instead.
+func (SessionOpenMode) EnumDescriptor() ([]byte, []int) {
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{0}
+}
+
 type SessionRecoveryState int32
 
 const (
@@ -67,11 +116,11 @@ func (x SessionRecoveryState) String() string {
 }
 
 func (SessionRecoveryState) Descriptor() protoreflect.EnumDescriptor {
-	return file_marlin_app_v1_app_server_proto_enumTypes[0].Descriptor()
+	return file_marlin_app_v1_app_server_proto_enumTypes[1].Descriptor()
 }
 
 func (SessionRecoveryState) Type() protoreflect.EnumType {
-	return &file_marlin_app_v1_app_server_proto_enumTypes[0]
+	return &file_marlin_app_v1_app_server_proto_enumTypes[1]
 }
 
 func (x SessionRecoveryState) Number() protoreflect.EnumNumber {
@@ -80,7 +129,7 @@ func (x SessionRecoveryState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SessionRecoveryState.Descriptor instead.
 func (SessionRecoveryState) EnumDescriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{0}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{1}
 }
 
 type MessageRole int32
@@ -116,11 +165,11 @@ func (x MessageRole) String() string {
 }
 
 func (MessageRole) Descriptor() protoreflect.EnumDescriptor {
-	return file_marlin_app_v1_app_server_proto_enumTypes[1].Descriptor()
+	return file_marlin_app_v1_app_server_proto_enumTypes[2].Descriptor()
 }
 
 func (MessageRole) Type() protoreflect.EnumType {
-	return &file_marlin_app_v1_app_server_proto_enumTypes[1]
+	return &file_marlin_app_v1_app_server_proto_enumTypes[2]
 }
 
 func (x MessageRole) Number() protoreflect.EnumNumber {
@@ -129,7 +178,7 @@ func (x MessageRole) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MessageRole.Descriptor instead.
 func (MessageRole) EnumDescriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{1}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{2}
 }
 
 type SessionTurnOutcome int32
@@ -168,11 +217,11 @@ func (x SessionTurnOutcome) String() string {
 }
 
 func (SessionTurnOutcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_marlin_app_v1_app_server_proto_enumTypes[2].Descriptor()
+	return file_marlin_app_v1_app_server_proto_enumTypes[3].Descriptor()
 }
 
 func (SessionTurnOutcome) Type() protoreflect.EnumType {
-	return &file_marlin_app_v1_app_server_proto_enumTypes[2]
+	return &file_marlin_app_v1_app_server_proto_enumTypes[3]
 }
 
 func (x SessionTurnOutcome) Number() protoreflect.EnumNumber {
@@ -181,7 +230,7 @@ func (x SessionTurnOutcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SessionTurnOutcome.Descriptor instead.
 func (SessionTurnOutcome) EnumDescriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{2}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{3}
 }
 
 type RuntimeRetirementStatus int32
@@ -220,11 +269,11 @@ func (x RuntimeRetirementStatus) String() string {
 }
 
 func (RuntimeRetirementStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_marlin_app_v1_app_server_proto_enumTypes[3].Descriptor()
+	return file_marlin_app_v1_app_server_proto_enumTypes[4].Descriptor()
 }
 
 func (RuntimeRetirementStatus) Type() protoreflect.EnumType {
-	return &file_marlin_app_v1_app_server_proto_enumTypes[3]
+	return &file_marlin_app_v1_app_server_proto_enumTypes[4]
 }
 
 func (x RuntimeRetirementStatus) Number() protoreflect.EnumNumber {
@@ -233,7 +282,105 @@ func (x RuntimeRetirementStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RuntimeRetirementStatus.Descriptor instead.
 func (RuntimeRetirementStatus) EnumDescriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{3}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{4}
+}
+
+// The host owns Session admission and Runtime allocation. Reopen must resolve
+// an existing Session in the caller's authorized scope.
+type OpenSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Mode          SessionOpenMode        `protobuf:"varint,2,opt,name=mode,proto3,enum=marlin.app.v1.SessionOpenMode" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenSessionRequest) Reset() {
+	*x = OpenSessionRequest{}
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenSessionRequest) ProtoMessage() {}
+
+func (x *OpenSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenSessionRequest.ProtoReflect.Descriptor instead.
+func (*OpenSessionRequest) Descriptor() ([]byte, []int) {
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *OpenSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *OpenSessionRequest) GetMode() SessionOpenMode {
+	if x != nil {
+		return x.Mode
+	}
+	return SessionOpenMode_SESSION_OPEN_MODE_UNSPECIFIED
+}
+
+type OpenSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenSessionResponse) Reset() {
+	*x = OpenSessionResponse{}
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenSessionResponse) ProtoMessage() {}
+
+func (x *OpenSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenSessionResponse.ProtoReflect.Descriptor instead.
+func (*OpenSessionResponse) Descriptor() ([]byte, []int) {
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *OpenSessionResponse) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
 }
 
 type GetSessionSummaryRequest struct {
@@ -245,7 +392,7 @@ type GetSessionSummaryRequest struct {
 
 func (x *GetSessionSummaryRequest) Reset() {
 	*x = GetSessionSummaryRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[0]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -257,7 +404,7 @@ func (x *GetSessionSummaryRequest) String() string {
 func (*GetSessionSummaryRequest) ProtoMessage() {}
 
 func (x *GetSessionSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[0]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -270,7 +417,7 @@ func (x *GetSessionSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{0}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetSessionSummaryRequest) GetSessionId() string {
@@ -293,7 +440,7 @@ type GetSessionSummaryResponse struct {
 
 func (x *GetSessionSummaryResponse) Reset() {
 	*x = GetSessionSummaryResponse{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[1]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -305,7 +452,7 @@ func (x *GetSessionSummaryResponse) String() string {
 func (*GetSessionSummaryResponse) ProtoMessage() {}
 
 func (x *GetSessionSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[1]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -318,7 +465,7 @@ func (x *GetSessionSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetSessionSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{1}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetSessionSummaryResponse) GetLatestTurn() *SessionTurnRef {
@@ -342,6 +489,121 @@ func (x *GetSessionSummaryResponse) GetRecoveryState() SessionRecoveryState {
 	return SessionRecoveryState_SESSION_RECOVERY_STATE_UNSPECIFIED
 }
 
+type GetSessionTurnStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Turn          *SessionTurnRef        `protobuf:"bytes,1,opt,name=turn,proto3" json:"turn,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSessionTurnStatusRequest) Reset() {
+	*x = GetSessionTurnStatusRequest{}
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSessionTurnStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSessionTurnStatusRequest) ProtoMessage() {}
+
+func (x *GetSessionTurnStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSessionTurnStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetSessionTurnStatusRequest) Descriptor() ([]byte, []int) {
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetSessionTurnStatusRequest) GetTurn() *SessionTurnRef {
+	if x != nil {
+		return x.Turn
+	}
+	return nil
+}
+
+type GetSessionTurnStatusResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Turn  *SessionTurnRef        `protobuf:"bytes,1,opt,name=turn,proto3" json:"turn,omitempty"`
+	// ACTIVE, FINISHED or UNRESOLVED. A missing turn returns NOT_FOUND.
+	RecoveryState SessionRecoveryState `protobuf:"varint,2,opt,name=recovery_state,json=recoveryState,proto3,enum=marlin.app.v1.SessionRecoveryState" json:"recovery_state,omitempty"`
+	// Observed journal position. Watch still resumes from the client's applied cursor.
+	LatestEventId string `protobuf:"bytes,3,opt,name=latest_event_id,json=latestEventId,proto3" json:"latest_event_id,omitempty"`
+	// Present only when the journal has an outcome for the observed turn.
+	Outcome       *SessionTurnOutcome `protobuf:"varint,4,opt,name=outcome,proto3,enum=marlin.app.v1.SessionTurnOutcome,oneof" json:"outcome,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSessionTurnStatusResponse) Reset() {
+	*x = GetSessionTurnStatusResponse{}
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSessionTurnStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSessionTurnStatusResponse) ProtoMessage() {}
+
+func (x *GetSessionTurnStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSessionTurnStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetSessionTurnStatusResponse) Descriptor() ([]byte, []int) {
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetSessionTurnStatusResponse) GetTurn() *SessionTurnRef {
+	if x != nil {
+		return x.Turn
+	}
+	return nil
+}
+
+func (x *GetSessionTurnStatusResponse) GetRecoveryState() SessionRecoveryState {
+	if x != nil {
+		return x.RecoveryState
+	}
+	return SessionRecoveryState_SESSION_RECOVERY_STATE_UNSPECIFIED
+}
+
+func (x *GetSessionTurnStatusResponse) GetLatestEventId() string {
+	if x != nil {
+		return x.LatestEventId
+	}
+	return ""
+}
+
+func (x *GetSessionTurnStatusResponse) GetOutcome() SessionTurnOutcome {
+	if x != nil && x.Outcome != nil {
+		return *x.Outcome
+	}
+	return SessionTurnOutcome_SESSION_TURN_OUTCOME_UNSPECIFIED
+}
+
 type GetCapabilitiesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -350,7 +612,7 @@ type GetCapabilitiesRequest struct {
 
 func (x *GetCapabilitiesRequest) Reset() {
 	*x = GetCapabilitiesRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[2]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -362,7 +624,7 @@ func (x *GetCapabilitiesRequest) String() string {
 func (*GetCapabilitiesRequest) ProtoMessage() {}
 
 func (x *GetCapabilitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[2]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -375,7 +637,7 @@ func (x *GetCapabilitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapabilitiesRequest.ProtoReflect.Descriptor instead.
 func (*GetCapabilitiesRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{2}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{6}
 }
 
 type GetCapabilitiesResponse struct {
@@ -390,7 +652,7 @@ type GetCapabilitiesResponse struct {
 
 func (x *GetCapabilitiesResponse) Reset() {
 	*x = GetCapabilitiesResponse{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[3]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -402,7 +664,7 @@ func (x *GetCapabilitiesResponse) String() string {
 func (*GetCapabilitiesResponse) ProtoMessage() {}
 
 func (x *GetCapabilitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[3]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -415,7 +677,7 @@ func (x *GetCapabilitiesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapabilitiesResponse.ProtoReflect.Descriptor instead.
 func (*GetCapabilitiesResponse) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{3}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetCapabilitiesResponse) GetMaxRequestBytes() uint32 {
@@ -455,7 +717,7 @@ type StreamTurnRequest struct {
 
 func (x *StreamTurnRequest) Reset() {
 	*x = StreamTurnRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[4]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -467,7 +729,7 @@ func (x *StreamTurnRequest) String() string {
 func (*StreamTurnRequest) ProtoMessage() {}
 
 func (x *StreamTurnRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[4]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -480,7 +742,7 @@ func (x *StreamTurnRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamTurnRequest.ProtoReflect.Descriptor instead.
 func (*StreamTurnRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{4}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *StreamTurnRequest) GetMessages() []*ConversationMessage {
@@ -500,7 +762,7 @@ type ConversationMessage struct {
 
 func (x *ConversationMessage) Reset() {
 	*x = ConversationMessage{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[5]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -512,7 +774,7 @@ func (x *ConversationMessage) String() string {
 func (*ConversationMessage) ProtoMessage() {}
 
 func (x *ConversationMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[5]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -525,7 +787,7 @@ func (x *ConversationMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConversationMessage.ProtoReflect.Descriptor instead.
 func (*ConversationMessage) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{5}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ConversationMessage) GetRole() MessageRole {
@@ -556,7 +818,7 @@ type TurnEvent struct {
 
 func (x *TurnEvent) Reset() {
 	*x = TurnEvent{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[6]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +830,7 @@ func (x *TurnEvent) String() string {
 func (*TurnEvent) ProtoMessage() {}
 
 func (x *TurnEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[6]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +843,7 @@ func (x *TurnEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnEvent.ProtoReflect.Descriptor instead.
 func (*TurnEvent) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{6}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *TurnEvent) GetEvent() isTurnEvent_Event {
@@ -648,7 +910,7 @@ type TurnStarted struct {
 
 func (x *TurnStarted) Reset() {
 	*x = TurnStarted{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[7]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -660,7 +922,7 @@ func (x *TurnStarted) String() string {
 func (*TurnStarted) ProtoMessage() {}
 
 func (x *TurnStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[7]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -673,7 +935,7 @@ func (x *TurnStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnStarted.ProtoReflect.Descriptor instead.
 func (*TurnStarted) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{7}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{11}
 }
 
 type TextDelta struct {
@@ -687,7 +949,7 @@ type TextDelta struct {
 
 func (x *TextDelta) Reset() {
 	*x = TextDelta{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[8]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -699,7 +961,7 @@ func (x *TextDelta) String() string {
 func (*TextDelta) ProtoMessage() {}
 
 func (x *TextDelta) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[8]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -712,7 +974,7 @@ func (x *TextDelta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextDelta.ProtoReflect.Descriptor instead.
 func (*TextDelta) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{8}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *TextDelta) GetSequence() uint64 {
@@ -740,7 +1002,7 @@ type TurnCompleted struct {
 
 func (x *TurnCompleted) Reset() {
 	*x = TurnCompleted{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[9]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -752,7 +1014,7 @@ func (x *TurnCompleted) String() string {
 func (*TurnCompleted) ProtoMessage() {}
 
 func (x *TurnCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[9]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -765,7 +1027,7 @@ func (x *TurnCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnCompleted.ProtoReflect.Descriptor instead.
 func (*TurnCompleted) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{9}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *TurnCompleted) GetTextChunks() uint64 {
@@ -799,7 +1061,7 @@ type StartSessionTurnRequest struct {
 
 func (x *StartSessionTurnRequest) Reset() {
 	*x = StartSessionTurnRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[10]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -811,7 +1073,7 @@ func (x *StartSessionTurnRequest) String() string {
 func (*StartSessionTurnRequest) ProtoMessage() {}
 
 func (x *StartSessionTurnRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[10]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -824,7 +1086,7 @@ func (x *StartSessionTurnRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartSessionTurnRequest.ProtoReflect.Descriptor instead.
 func (*StartSessionTurnRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{10}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StartSessionTurnRequest) GetSessionId() string {
@@ -865,7 +1127,7 @@ type SessionTurnRef struct {
 
 func (x *SessionTurnRef) Reset() {
 	*x = SessionTurnRef{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[11]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -877,7 +1139,7 @@ func (x *SessionTurnRef) String() string {
 func (*SessionTurnRef) ProtoMessage() {}
 
 func (x *SessionTurnRef) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[11]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -890,7 +1152,7 @@ func (x *SessionTurnRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionTurnRef.ProtoReflect.Descriptor instead.
 func (*SessionTurnRef) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{11}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SessionTurnRef) GetSessionId() string {
@@ -916,7 +1178,7 @@ type StartSessionTurnResponse struct {
 
 func (x *StartSessionTurnResponse) Reset() {
 	*x = StartSessionTurnResponse{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[12]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -928,7 +1190,7 @@ func (x *StartSessionTurnResponse) String() string {
 func (*StartSessionTurnResponse) ProtoMessage() {}
 
 func (x *StartSessionTurnResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[12]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -941,7 +1203,7 @@ func (x *StartSessionTurnResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartSessionTurnResponse.ProtoReflect.Descriptor instead.
 func (*StartSessionTurnResponse) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{12}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StartSessionTurnResponse) GetTurn() *SessionTurnRef {
@@ -962,7 +1224,7 @@ type WatchSessionTurnRequest struct {
 
 func (x *WatchSessionTurnRequest) Reset() {
 	*x = WatchSessionTurnRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[13]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -974,7 +1236,7 @@ func (x *WatchSessionTurnRequest) String() string {
 func (*WatchSessionTurnRequest) ProtoMessage() {}
 
 func (x *WatchSessionTurnRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[13]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -987,7 +1249,7 @@ func (x *WatchSessionTurnRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchSessionTurnRequest.ProtoReflect.Descriptor instead.
 func (*WatchSessionTurnRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{13}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *WatchSessionTurnRequest) GetTurn() *SessionTurnRef {
@@ -1019,7 +1281,7 @@ type SessionTurnEvent struct {
 
 func (x *SessionTurnEvent) Reset() {
 	*x = SessionTurnEvent{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[14]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1031,7 +1293,7 @@ func (x *SessionTurnEvent) String() string {
 func (*SessionTurnEvent) ProtoMessage() {}
 
 func (x *SessionTurnEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[14]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1044,7 +1306,7 @@ func (x *SessionTurnEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionTurnEvent.ProtoReflect.Descriptor instead.
 func (*SessionTurnEvent) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{14}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SessionTurnEvent) GetEventId() string {
@@ -1119,7 +1381,7 @@ type TextCheckpoint struct {
 
 func (x *TextCheckpoint) Reset() {
 	*x = TextCheckpoint{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[15]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1131,7 +1393,7 @@ func (x *TextCheckpoint) String() string {
 func (*TextCheckpoint) ProtoMessage() {}
 
 func (x *TextCheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[15]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1144,7 +1406,7 @@ func (x *TextCheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextCheckpoint.ProtoReflect.Descriptor instead.
 func (*TextCheckpoint) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{15}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *TextCheckpoint) GetText() string {
@@ -1163,7 +1425,7 @@ type CancelSessionTurnRequest struct {
 
 func (x *CancelSessionTurnRequest) Reset() {
 	*x = CancelSessionTurnRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[16]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1175,7 +1437,7 @@ func (x *CancelSessionTurnRequest) String() string {
 func (*CancelSessionTurnRequest) ProtoMessage() {}
 
 func (x *CancelSessionTurnRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[16]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1450,7 @@ func (x *CancelSessionTurnRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelSessionTurnRequest.ProtoReflect.Descriptor instead.
 func (*CancelSessionTurnRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{16}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CancelSessionTurnRequest) GetTurn() *SessionTurnRef {
@@ -1214,7 +1476,7 @@ type RuntimeShutdownReceipt struct {
 
 func (x *RuntimeShutdownReceipt) Reset() {
 	*x = RuntimeShutdownReceipt{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[17]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1226,7 +1488,7 @@ func (x *RuntimeShutdownReceipt) String() string {
 func (*RuntimeShutdownReceipt) ProtoMessage() {}
 
 func (x *RuntimeShutdownReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[17]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1239,7 +1501,7 @@ func (x *RuntimeShutdownReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeShutdownReceipt.ProtoReflect.Descriptor instead.
 func (*RuntimeShutdownReceipt) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{17}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RuntimeShutdownReceipt) GetCompleted() bool {
@@ -1302,7 +1564,7 @@ type CancelSessionTurnResponse struct {
 
 func (x *CancelSessionTurnResponse) Reset() {
 	*x = CancelSessionTurnResponse{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[18]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1314,7 +1576,7 @@ func (x *CancelSessionTurnResponse) String() string {
 func (*CancelSessionTurnResponse) ProtoMessage() {}
 
 func (x *CancelSessionTurnResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[18]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1327,7 +1589,7 @@ func (x *CancelSessionTurnResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelSessionTurnResponse.ProtoReflect.Descriptor instead.
 func (*CancelSessionTurnResponse) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{18}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CancelSessionTurnResponse) GetTurn() *SessionTurnRef {
@@ -1360,7 +1622,7 @@ type GetSessionTurnCancellationRequest struct {
 
 func (x *GetSessionTurnCancellationRequest) Reset() {
 	*x = GetSessionTurnCancellationRequest{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[19]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1372,7 +1634,7 @@ func (x *GetSessionTurnCancellationRequest) String() string {
 func (*GetSessionTurnCancellationRequest) ProtoMessage() {}
 
 func (x *GetSessionTurnCancellationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[19]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1385,7 +1647,7 @@ func (x *GetSessionTurnCancellationRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetSessionTurnCancellationRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionTurnCancellationRequest) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{19}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetSessionTurnCancellationRequest) GetTurn() *SessionTurnRef {
@@ -1410,7 +1672,7 @@ type GetSessionTurnCancellationResponse struct {
 
 func (x *GetSessionTurnCancellationResponse) Reset() {
 	*x = GetSessionTurnCancellationResponse{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[20]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1422,7 +1684,7 @@ func (x *GetSessionTurnCancellationResponse) String() string {
 func (*GetSessionTurnCancellationResponse) ProtoMessage() {}
 
 func (x *GetSessionTurnCancellationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[20]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1435,7 +1697,7 @@ func (x *GetSessionTurnCancellationResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetSessionTurnCancellationResponse.ProtoReflect.Descriptor instead.
 func (*GetSessionTurnCancellationResponse) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{20}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetSessionTurnCancellationResponse) GetTurn() *SessionTurnRef {
@@ -1502,7 +1764,7 @@ type CancellationEvidenceUnavailable struct {
 
 func (x *CancellationEvidenceUnavailable) Reset() {
 	*x = CancellationEvidenceUnavailable{}
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[21]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1514,7 +1776,7 @@ func (x *CancellationEvidenceUnavailable) String() string {
 func (*CancellationEvidenceUnavailable) ProtoMessage() {}
 
 func (x *CancellationEvidenceUnavailable) ProtoReflect() protoreflect.Message {
-	mi := &file_marlin_app_v1_app_server_proto_msgTypes[21]
+	mi := &file_marlin_app_v1_app_server_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1527,14 +1789,21 @@ func (x *CancellationEvidenceUnavailable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancellationEvidenceUnavailable.ProtoReflect.Descriptor instead.
 func (*CancellationEvidenceUnavailable) Descriptor() ([]byte, []int) {
-	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{21}
+	return file_marlin_app_v1_app_server_proto_rawDescGZIP(), []int{25}
 }
 
 var File_marlin_app_v1_app_server_proto protoreflect.FileDescriptor
 
 const file_marlin_app_v1_app_server_proto_rawDesc = "" +
 	"\n" +
-	"\x1emarlin/app/v1/app_server.proto\x12\rmarlin.app.v1\"9\n" +
+	"\x1emarlin/app/v1/app_server.proto\x12\rmarlin.app.v1\"g\n" +
+	"\x12OpenSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x122\n" +
+	"\x04mode\x18\x02 \x01(\x0e2\x1e.marlin.app.v1.SessionOpenModeR\x04mode\"4\n" +
+	"\x13OpenSessionResponse\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"9\n" +
 	"\x18GetSessionSummaryRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\xe8\x01\n" +
@@ -1543,7 +1812,16 @@ const file_marlin_app_v1_app_server_proto_rawDesc = "" +
 	"latestTurn\x12+\n" +
 	"\x0flatest_event_id\x18\x02 \x01(\tH\x00R\rlatestEventId\x88\x01\x01\x12J\n" +
 	"\x0erecovery_state\x18\x03 \x01(\x0e2#.marlin.app.v1.SessionRecoveryStateR\rrecoveryStateB\x12\n" +
-	"\x10_latest_event_id\"\x18\n" +
+	"\x10_latest_event_id\"P\n" +
+	"\x1bGetSessionTurnStatusRequest\x121\n" +
+	"\x04turn\x18\x01 \x01(\v2\x1d.marlin.app.v1.SessionTurnRefR\x04turn\"\x93\x02\n" +
+	"\x1cGetSessionTurnStatusResponse\x121\n" +
+	"\x04turn\x18\x01 \x01(\v2\x1d.marlin.app.v1.SessionTurnRefR\x04turn\x12J\n" +
+	"\x0erecovery_state\x18\x02 \x01(\x0e2#.marlin.app.v1.SessionRecoveryStateR\rrecoveryState\x12&\n" +
+	"\x0flatest_event_id\x18\x03 \x01(\tR\rlatestEventId\x12@\n" +
+	"\aoutcome\x18\x04 \x01(\x0e2!.marlin.app.v1.SessionTurnOutcomeH\x00R\aoutcome\x88\x01\x01B\n" +
+	"\n" +
+	"\b_outcome\"\x18\n" +
 	"\x16GetCapabilitiesRequest\"\xce\x01\n" +
 	"\x17GetCapabilitiesResponse\x12*\n" +
 	"\x11max_request_bytes\x18\x01 \x01(\rR\x0fmaxRequestBytes\x12!\n" +
@@ -1622,7 +1900,11 @@ const file_marlin_app_v1_app_server_proto_rawDesc = "" +
 	"\aoutcome\x18\x04 \x01(\x0e2!.marlin.app.v1.SessionTurnOutcomeR\aoutcomeB\n" +
 	"\n" +
 	"\bevidence\"!\n" +
-	"\x1fCancellationEvidenceUnavailable*\x85\x02\n" +
+	"\x1fCancellationEvidenceUnavailable*r\n" +
+	"\x0fSessionOpenMode\x12!\n" +
+	"\x1dSESSION_OPEN_MODE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18SESSION_OPEN_MODE_CREATE\x10\x01\x12\x1e\n" +
+	"\x1aSESSION_OPEN_MODE_EXISTING\x10\x02*\x85\x02\n" +
 	"\x14SessionRecoveryState\x12&\n" +
 	"\"SESSION_RECOVERY_STATE_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cSESSION_RECOVERY_STATE_EMPTY\x10\x01\x12!\n" +
@@ -1643,15 +1925,17 @@ const file_marlin_app_v1_app_server_proto_rawDesc = "" +
 	"%RUNTIME_RETIREMENT_STATUS_UNSPECIFIED\x10\x00\x12'\n" +
 	"#RUNTIME_RETIREMENT_STATUS_COMPLETED\x10\x01\x12'\n" +
 	"#RUNTIME_RETIREMENT_STATUS_TIMED_OUT\x10\x02\x121\n" +
-	"-RUNTIME_RETIREMENT_STATUS_CLEANUP_UNCONFIRMED\x10\x032\xd1\x05\n" +
+	"-RUNTIME_RETIREMENT_STATUS_CLEANUP_UNCONFIRMED\x10\x032\x98\a\n" +
 	"\tAppServer\x12`\n" +
 	"\x0fGetCapabilities\x12%.marlin.app.v1.GetCapabilitiesRequest\x1a&.marlin.app.v1.GetCapabilitiesResponse\x12J\n" +
 	"\n" +
 	"StreamTurn\x12 .marlin.app.v1.StreamTurnRequest\x1a\x18.marlin.app.v1.TurnEvent0\x01\x12c\n" +
 	"\x10StartSessionTurn\x12&.marlin.app.v1.StartSessionTurnRequest\x1a'.marlin.app.v1.StartSessionTurnResponse\x12]\n" +
 	"\x10WatchSessionTurn\x12&.marlin.app.v1.WatchSessionTurnRequest\x1a\x1f.marlin.app.v1.SessionTurnEvent0\x01\x12f\n" +
-	"\x11CancelSessionTurn\x12'.marlin.app.v1.CancelSessionTurnRequest\x1a(.marlin.app.v1.CancelSessionTurnResponse\x12f\n" +
-	"\x11GetSessionSummary\x12'.marlin.app.v1.GetSessionSummaryRequest\x1a(.marlin.app.v1.GetSessionSummaryResponse\x12\x81\x01\n" +
+	"\x11CancelSessionTurn\x12'.marlin.app.v1.CancelSessionTurnRequest\x1a(.marlin.app.v1.CancelSessionTurnResponse\x12T\n" +
+	"\vOpenSession\x12!.marlin.app.v1.OpenSessionRequest\x1a\".marlin.app.v1.OpenSessionResponse\x12f\n" +
+	"\x11GetSessionSummary\x12'.marlin.app.v1.GetSessionSummaryRequest\x1a(.marlin.app.v1.GetSessionSummaryResponse\x12o\n" +
+	"\x14GetSessionTurnStatus\x12*.marlin.app.v1.GetSessionTurnStatusRequest\x1a+.marlin.app.v1.GetSessionTurnStatusResponse\x12\x81\x01\n" +
 	"\x1aGetSessionTurnCancellation\x120.marlin.app.v1.GetSessionTurnCancellationRequest\x1a1.marlin.app.v1.GetSessionTurnCancellationResponseb\x06proto3"
 
 var (
@@ -1666,78 +1950,92 @@ func file_marlin_app_v1_app_server_proto_rawDescGZIP() []byte {
 	return file_marlin_app_v1_app_server_proto_rawDescData
 }
 
-var file_marlin_app_v1_app_server_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_marlin_app_v1_app_server_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_marlin_app_v1_app_server_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_marlin_app_v1_app_server_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_marlin_app_v1_app_server_proto_goTypes = []any{
-	(SessionRecoveryState)(0),                  // 0: marlin.app.v1.SessionRecoveryState
-	(MessageRole)(0),                           // 1: marlin.app.v1.MessageRole
-	(SessionTurnOutcome)(0),                    // 2: marlin.app.v1.SessionTurnOutcome
-	(RuntimeRetirementStatus)(0),               // 3: marlin.app.v1.RuntimeRetirementStatus
-	(*GetSessionSummaryRequest)(nil),           // 4: marlin.app.v1.GetSessionSummaryRequest
-	(*GetSessionSummaryResponse)(nil),          // 5: marlin.app.v1.GetSessionSummaryResponse
-	(*GetCapabilitiesRequest)(nil),             // 6: marlin.app.v1.GetCapabilitiesRequest
-	(*GetCapabilitiesResponse)(nil),            // 7: marlin.app.v1.GetCapabilitiesResponse
-	(*StreamTurnRequest)(nil),                  // 8: marlin.app.v1.StreamTurnRequest
-	(*ConversationMessage)(nil),                // 9: marlin.app.v1.ConversationMessage
-	(*TurnEvent)(nil),                          // 10: marlin.app.v1.TurnEvent
-	(*TurnStarted)(nil),                        // 11: marlin.app.v1.TurnStarted
-	(*TextDelta)(nil),                          // 12: marlin.app.v1.TextDelta
-	(*TurnCompleted)(nil),                      // 13: marlin.app.v1.TurnCompleted
-	(*StartSessionTurnRequest)(nil),            // 14: marlin.app.v1.StartSessionTurnRequest
-	(*SessionTurnRef)(nil),                     // 15: marlin.app.v1.SessionTurnRef
-	(*StartSessionTurnResponse)(nil),           // 16: marlin.app.v1.StartSessionTurnResponse
-	(*WatchSessionTurnRequest)(nil),            // 17: marlin.app.v1.WatchSessionTurnRequest
-	(*SessionTurnEvent)(nil),                   // 18: marlin.app.v1.SessionTurnEvent
-	(*TextCheckpoint)(nil),                     // 19: marlin.app.v1.TextCheckpoint
-	(*CancelSessionTurnRequest)(nil),           // 20: marlin.app.v1.CancelSessionTurnRequest
-	(*RuntimeShutdownReceipt)(nil),             // 21: marlin.app.v1.RuntimeShutdownReceipt
-	(*CancelSessionTurnResponse)(nil),          // 22: marlin.app.v1.CancelSessionTurnResponse
-	(*GetSessionTurnCancellationRequest)(nil),  // 23: marlin.app.v1.GetSessionTurnCancellationRequest
-	(*GetSessionTurnCancellationResponse)(nil), // 24: marlin.app.v1.GetSessionTurnCancellationResponse
-	(*CancellationEvidenceUnavailable)(nil),    // 25: marlin.app.v1.CancellationEvidenceUnavailable
+	(SessionOpenMode)(0),                       // 0: marlin.app.v1.SessionOpenMode
+	(SessionRecoveryState)(0),                  // 1: marlin.app.v1.SessionRecoveryState
+	(MessageRole)(0),                           // 2: marlin.app.v1.MessageRole
+	(SessionTurnOutcome)(0),                    // 3: marlin.app.v1.SessionTurnOutcome
+	(RuntimeRetirementStatus)(0),               // 4: marlin.app.v1.RuntimeRetirementStatus
+	(*OpenSessionRequest)(nil),                 // 5: marlin.app.v1.OpenSessionRequest
+	(*OpenSessionResponse)(nil),                // 6: marlin.app.v1.OpenSessionResponse
+	(*GetSessionSummaryRequest)(nil),           // 7: marlin.app.v1.GetSessionSummaryRequest
+	(*GetSessionSummaryResponse)(nil),          // 8: marlin.app.v1.GetSessionSummaryResponse
+	(*GetSessionTurnStatusRequest)(nil),        // 9: marlin.app.v1.GetSessionTurnStatusRequest
+	(*GetSessionTurnStatusResponse)(nil),       // 10: marlin.app.v1.GetSessionTurnStatusResponse
+	(*GetCapabilitiesRequest)(nil),             // 11: marlin.app.v1.GetCapabilitiesRequest
+	(*GetCapabilitiesResponse)(nil),            // 12: marlin.app.v1.GetCapabilitiesResponse
+	(*StreamTurnRequest)(nil),                  // 13: marlin.app.v1.StreamTurnRequest
+	(*ConversationMessage)(nil),                // 14: marlin.app.v1.ConversationMessage
+	(*TurnEvent)(nil),                          // 15: marlin.app.v1.TurnEvent
+	(*TurnStarted)(nil),                        // 16: marlin.app.v1.TurnStarted
+	(*TextDelta)(nil),                          // 17: marlin.app.v1.TextDelta
+	(*TurnCompleted)(nil),                      // 18: marlin.app.v1.TurnCompleted
+	(*StartSessionTurnRequest)(nil),            // 19: marlin.app.v1.StartSessionTurnRequest
+	(*SessionTurnRef)(nil),                     // 20: marlin.app.v1.SessionTurnRef
+	(*StartSessionTurnResponse)(nil),           // 21: marlin.app.v1.StartSessionTurnResponse
+	(*WatchSessionTurnRequest)(nil),            // 22: marlin.app.v1.WatchSessionTurnRequest
+	(*SessionTurnEvent)(nil),                   // 23: marlin.app.v1.SessionTurnEvent
+	(*TextCheckpoint)(nil),                     // 24: marlin.app.v1.TextCheckpoint
+	(*CancelSessionTurnRequest)(nil),           // 25: marlin.app.v1.CancelSessionTurnRequest
+	(*RuntimeShutdownReceipt)(nil),             // 26: marlin.app.v1.RuntimeShutdownReceipt
+	(*CancelSessionTurnResponse)(nil),          // 27: marlin.app.v1.CancelSessionTurnResponse
+	(*GetSessionTurnCancellationRequest)(nil),  // 28: marlin.app.v1.GetSessionTurnCancellationRequest
+	(*GetSessionTurnCancellationResponse)(nil), // 29: marlin.app.v1.GetSessionTurnCancellationResponse
+	(*CancellationEvidenceUnavailable)(nil),    // 30: marlin.app.v1.CancellationEvidenceUnavailable
 }
 var file_marlin_app_v1_app_server_proto_depIdxs = []int32{
-	15, // 0: marlin.app.v1.GetSessionSummaryResponse.latest_turn:type_name -> marlin.app.v1.SessionTurnRef
-	0,  // 1: marlin.app.v1.GetSessionSummaryResponse.recovery_state:type_name -> marlin.app.v1.SessionRecoveryState
-	9,  // 2: marlin.app.v1.StreamTurnRequest.messages:type_name -> marlin.app.v1.ConversationMessage
-	1,  // 3: marlin.app.v1.ConversationMessage.role:type_name -> marlin.app.v1.MessageRole
-	11, // 4: marlin.app.v1.TurnEvent.started:type_name -> marlin.app.v1.TurnStarted
-	12, // 5: marlin.app.v1.TurnEvent.text_delta:type_name -> marlin.app.v1.TextDelta
-	13, // 6: marlin.app.v1.TurnEvent.completed:type_name -> marlin.app.v1.TurnCompleted
-	15, // 7: marlin.app.v1.StartSessionTurnResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
-	15, // 8: marlin.app.v1.WatchSessionTurnRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
-	11, // 9: marlin.app.v1.SessionTurnEvent.started:type_name -> marlin.app.v1.TurnStarted
-	19, // 10: marlin.app.v1.SessionTurnEvent.text_checkpoint:type_name -> marlin.app.v1.TextCheckpoint
-	2,  // 11: marlin.app.v1.SessionTurnEvent.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
-	15, // 12: marlin.app.v1.CancelSessionTurnRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
-	3,  // 13: marlin.app.v1.RuntimeShutdownReceipt.status:type_name -> marlin.app.v1.RuntimeRetirementStatus
-	15, // 14: marlin.app.v1.CancelSessionTurnResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
-	21, // 15: marlin.app.v1.CancelSessionTurnResponse.runtime:type_name -> marlin.app.v1.RuntimeShutdownReceipt
-	2,  // 16: marlin.app.v1.CancelSessionTurnResponse.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
-	15, // 17: marlin.app.v1.GetSessionTurnCancellationRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
-	15, // 18: marlin.app.v1.GetSessionTurnCancellationResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
-	21, // 19: marlin.app.v1.GetSessionTurnCancellationResponse.recorded:type_name -> marlin.app.v1.RuntimeShutdownReceipt
-	25, // 20: marlin.app.v1.GetSessionTurnCancellationResponse.unavailable:type_name -> marlin.app.v1.CancellationEvidenceUnavailable
-	2,  // 21: marlin.app.v1.GetSessionTurnCancellationResponse.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
-	6,  // 22: marlin.app.v1.AppServer.GetCapabilities:input_type -> marlin.app.v1.GetCapabilitiesRequest
-	8,  // 23: marlin.app.v1.AppServer.StreamTurn:input_type -> marlin.app.v1.StreamTurnRequest
-	14, // 24: marlin.app.v1.AppServer.StartSessionTurn:input_type -> marlin.app.v1.StartSessionTurnRequest
-	17, // 25: marlin.app.v1.AppServer.WatchSessionTurn:input_type -> marlin.app.v1.WatchSessionTurnRequest
-	20, // 26: marlin.app.v1.AppServer.CancelSessionTurn:input_type -> marlin.app.v1.CancelSessionTurnRequest
-	4,  // 27: marlin.app.v1.AppServer.GetSessionSummary:input_type -> marlin.app.v1.GetSessionSummaryRequest
-	23, // 28: marlin.app.v1.AppServer.GetSessionTurnCancellation:input_type -> marlin.app.v1.GetSessionTurnCancellationRequest
-	7,  // 29: marlin.app.v1.AppServer.GetCapabilities:output_type -> marlin.app.v1.GetCapabilitiesResponse
-	10, // 30: marlin.app.v1.AppServer.StreamTurn:output_type -> marlin.app.v1.TurnEvent
-	16, // 31: marlin.app.v1.AppServer.StartSessionTurn:output_type -> marlin.app.v1.StartSessionTurnResponse
-	18, // 32: marlin.app.v1.AppServer.WatchSessionTurn:output_type -> marlin.app.v1.SessionTurnEvent
-	22, // 33: marlin.app.v1.AppServer.CancelSessionTurn:output_type -> marlin.app.v1.CancelSessionTurnResponse
-	5,  // 34: marlin.app.v1.AppServer.GetSessionSummary:output_type -> marlin.app.v1.GetSessionSummaryResponse
-	24, // 35: marlin.app.v1.AppServer.GetSessionTurnCancellation:output_type -> marlin.app.v1.GetSessionTurnCancellationResponse
-	29, // [29:36] is the sub-list for method output_type
-	22, // [22:29] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	0,  // 0: marlin.app.v1.OpenSessionRequest.mode:type_name -> marlin.app.v1.SessionOpenMode
+	20, // 1: marlin.app.v1.GetSessionSummaryResponse.latest_turn:type_name -> marlin.app.v1.SessionTurnRef
+	1,  // 2: marlin.app.v1.GetSessionSummaryResponse.recovery_state:type_name -> marlin.app.v1.SessionRecoveryState
+	20, // 3: marlin.app.v1.GetSessionTurnStatusRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
+	20, // 4: marlin.app.v1.GetSessionTurnStatusResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
+	1,  // 5: marlin.app.v1.GetSessionTurnStatusResponse.recovery_state:type_name -> marlin.app.v1.SessionRecoveryState
+	3,  // 6: marlin.app.v1.GetSessionTurnStatusResponse.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
+	14, // 7: marlin.app.v1.StreamTurnRequest.messages:type_name -> marlin.app.v1.ConversationMessage
+	2,  // 8: marlin.app.v1.ConversationMessage.role:type_name -> marlin.app.v1.MessageRole
+	16, // 9: marlin.app.v1.TurnEvent.started:type_name -> marlin.app.v1.TurnStarted
+	17, // 10: marlin.app.v1.TurnEvent.text_delta:type_name -> marlin.app.v1.TextDelta
+	18, // 11: marlin.app.v1.TurnEvent.completed:type_name -> marlin.app.v1.TurnCompleted
+	20, // 12: marlin.app.v1.StartSessionTurnResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
+	20, // 13: marlin.app.v1.WatchSessionTurnRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
+	16, // 14: marlin.app.v1.SessionTurnEvent.started:type_name -> marlin.app.v1.TurnStarted
+	24, // 15: marlin.app.v1.SessionTurnEvent.text_checkpoint:type_name -> marlin.app.v1.TextCheckpoint
+	3,  // 16: marlin.app.v1.SessionTurnEvent.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
+	20, // 17: marlin.app.v1.CancelSessionTurnRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
+	4,  // 18: marlin.app.v1.RuntimeShutdownReceipt.status:type_name -> marlin.app.v1.RuntimeRetirementStatus
+	20, // 19: marlin.app.v1.CancelSessionTurnResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
+	26, // 20: marlin.app.v1.CancelSessionTurnResponse.runtime:type_name -> marlin.app.v1.RuntimeShutdownReceipt
+	3,  // 21: marlin.app.v1.CancelSessionTurnResponse.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
+	20, // 22: marlin.app.v1.GetSessionTurnCancellationRequest.turn:type_name -> marlin.app.v1.SessionTurnRef
+	20, // 23: marlin.app.v1.GetSessionTurnCancellationResponse.turn:type_name -> marlin.app.v1.SessionTurnRef
+	26, // 24: marlin.app.v1.GetSessionTurnCancellationResponse.recorded:type_name -> marlin.app.v1.RuntimeShutdownReceipt
+	30, // 25: marlin.app.v1.GetSessionTurnCancellationResponse.unavailable:type_name -> marlin.app.v1.CancellationEvidenceUnavailable
+	3,  // 26: marlin.app.v1.GetSessionTurnCancellationResponse.outcome:type_name -> marlin.app.v1.SessionTurnOutcome
+	11, // 27: marlin.app.v1.AppServer.GetCapabilities:input_type -> marlin.app.v1.GetCapabilitiesRequest
+	13, // 28: marlin.app.v1.AppServer.StreamTurn:input_type -> marlin.app.v1.StreamTurnRequest
+	19, // 29: marlin.app.v1.AppServer.StartSessionTurn:input_type -> marlin.app.v1.StartSessionTurnRequest
+	22, // 30: marlin.app.v1.AppServer.WatchSessionTurn:input_type -> marlin.app.v1.WatchSessionTurnRequest
+	25, // 31: marlin.app.v1.AppServer.CancelSessionTurn:input_type -> marlin.app.v1.CancelSessionTurnRequest
+	5,  // 32: marlin.app.v1.AppServer.OpenSession:input_type -> marlin.app.v1.OpenSessionRequest
+	7,  // 33: marlin.app.v1.AppServer.GetSessionSummary:input_type -> marlin.app.v1.GetSessionSummaryRequest
+	9,  // 34: marlin.app.v1.AppServer.GetSessionTurnStatus:input_type -> marlin.app.v1.GetSessionTurnStatusRequest
+	28, // 35: marlin.app.v1.AppServer.GetSessionTurnCancellation:input_type -> marlin.app.v1.GetSessionTurnCancellationRequest
+	12, // 36: marlin.app.v1.AppServer.GetCapabilities:output_type -> marlin.app.v1.GetCapabilitiesResponse
+	15, // 37: marlin.app.v1.AppServer.StreamTurn:output_type -> marlin.app.v1.TurnEvent
+	21, // 38: marlin.app.v1.AppServer.StartSessionTurn:output_type -> marlin.app.v1.StartSessionTurnResponse
+	23, // 39: marlin.app.v1.AppServer.WatchSessionTurn:output_type -> marlin.app.v1.SessionTurnEvent
+	27, // 40: marlin.app.v1.AppServer.CancelSessionTurn:output_type -> marlin.app.v1.CancelSessionTurnResponse
+	6,  // 41: marlin.app.v1.AppServer.OpenSession:output_type -> marlin.app.v1.OpenSessionResponse
+	8,  // 42: marlin.app.v1.AppServer.GetSessionSummary:output_type -> marlin.app.v1.GetSessionSummaryResponse
+	10, // 43: marlin.app.v1.AppServer.GetSessionTurnStatus:output_type -> marlin.app.v1.GetSessionTurnStatusResponse
+	29, // 44: marlin.app.v1.AppServer.GetSessionTurnCancellation:output_type -> marlin.app.v1.GetSessionTurnCancellationResponse
+	36, // [36:45] is the sub-list for method output_type
+	27, // [27:36] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_marlin_app_v1_app_server_proto_init() }
@@ -1745,21 +2043,22 @@ func file_marlin_app_v1_app_server_proto_init() {
 	if File_marlin_app_v1_app_server_proto != nil {
 		return
 	}
-	file_marlin_app_v1_app_server_proto_msgTypes[1].OneofWrappers = []any{}
 	file_marlin_app_v1_app_server_proto_msgTypes[3].OneofWrappers = []any{}
-	file_marlin_app_v1_app_server_proto_msgTypes[6].OneofWrappers = []any{
+	file_marlin_app_v1_app_server_proto_msgTypes[5].OneofWrappers = []any{}
+	file_marlin_app_v1_app_server_proto_msgTypes[7].OneofWrappers = []any{}
+	file_marlin_app_v1_app_server_proto_msgTypes[10].OneofWrappers = []any{
 		(*TurnEvent_Started)(nil),
 		(*TurnEvent_TextDelta)(nil),
 		(*TurnEvent_Completed)(nil),
 	}
-	file_marlin_app_v1_app_server_proto_msgTypes[13].OneofWrappers = []any{}
-	file_marlin_app_v1_app_server_proto_msgTypes[14].OneofWrappers = []any{
+	file_marlin_app_v1_app_server_proto_msgTypes[17].OneofWrappers = []any{}
+	file_marlin_app_v1_app_server_proto_msgTypes[18].OneofWrappers = []any{
 		(*SessionTurnEvent_Started)(nil),
 		(*SessionTurnEvent_TextCheckpoint)(nil),
 		(*SessionTurnEvent_Outcome)(nil),
 	}
-	file_marlin_app_v1_app_server_proto_msgTypes[17].OneofWrappers = []any{}
-	file_marlin_app_v1_app_server_proto_msgTypes[20].OneofWrappers = []any{
+	file_marlin_app_v1_app_server_proto_msgTypes[21].OneofWrappers = []any{}
+	file_marlin_app_v1_app_server_proto_msgTypes[24].OneofWrappers = []any{
 		(*GetSessionTurnCancellationResponse_Recorded)(nil),
 		(*GetSessionTurnCancellationResponse_Unavailable)(nil),
 	}
@@ -1768,8 +2067,8 @@ func file_marlin_app_v1_app_server_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_marlin_app_v1_app_server_proto_rawDesc), len(file_marlin_app_v1_app_server_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   22,
+			NumEnums:      5,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

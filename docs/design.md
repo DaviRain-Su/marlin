@@ -59,7 +59,7 @@
 
 | 依赖 | 版本/来源 | 说明 |
 | --- | --- | --- |
-| marlin-agent-core | 分支 `update/gerbil-boolean-inspection-gate`，**锁定 commit**（写本文时最新为 `c33fffa`） | 协议仍在高频演进（97 commits ahead of main），必须 vendored + 脚本化重取 |
+| marlin-agent-core | 分支 `update/gerbil-boolean-inspection-gate`，**锁定 commit**（写本文时最新为 `e409fa6`，此前为 `c33fffa`） | 协议仍在高频演进（97 commits ahead of main），必须 vendored + 脚本化重取 |
 | `app_server.proto` | 从上述 commit vendor 到 `proto/` | 上游同时产出 `marlin-app-v1.bin`（descriptor set），两种方式等价；vendoring 源码更利于 diff 审查 |
 | mygo | `v0.9.0`（2026-11-11） | MIT |
 | Go | ≥ 1.27 | |
@@ -78,14 +78,22 @@
 ```proto
 service AppServer {
   rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);              // e409fa6 新增：Session 准入/重开（Create/Existing）
   rpc StreamTurn(StreamTurnRequest) returns (stream TurnEvent);          // 无 session 的单轮流式，v1 不用
   rpc StartSessionTurn(StartSessionTurnRequest) returns (StartSessionTurnResponse);
   rpc WatchSessionTurn(WatchSessionTurnRequest) returns (stream SessionTurnEvent);
   rpc CancelSessionTurn(CancelSessionTurnRequest) returns (CancelSessionTurnResponse);
   rpc GetSessionSummary(GetSessionSummaryRequest) returns (GetSessionSummaryResponse);
   rpc GetSessionTurnCancellation(GetSessionTurnCancellationRequest) returns (GetSessionTurnCancellationResponse);
+  rpc GetSessionTurnStatus(GetSessionTurnStatusRequest) returns (GetSessionTurnStatusResponse);  // e409fa6 新增：按 turn 查 ACTIVE/FINISHED/UNRESOLVED + latest_event_id
 }
 ```
+
+e409fa6 语义变化（相对 `c33fffa`，均向后兼容，只增不改）：
+
+- `OpenSession`：host 现在有显式的 Session 准入；未配置 `session_lookup` 时单 session 绑定要求请求的 `session_id` 与绑定一致，`StartSessionTurn` 内部已按 `Existing` 解析——我们的 client（每次 send 带配置里的 session_id）不需要额外调用。
+- `GetSessionTurnStatus`：按 turn 返回恢复状态与 journal 观测位置；将来可替代我们基于 `GetSessionSummary` 的 unresolved 轮询，v1 暂不接。
+- Session recovery 边界收紧、取消 receipt 保留（上游 2864b25），与现有三态取消展示兼容。
 
 生成流程（脚本 `scripts/gen-stubs.sh`，CI 校验产物无 drift）：
 
@@ -108,7 +116,7 @@ protoc \
 
 ### 5.1 host 的组装（host-bin/，已落地）
 
-上游 `marlin-agent-app-server` 是**库**（`AppServer` + `SessionBinding`），不产独立二进制；`host-bin/` 是本仓库的薄包装 crate（git 依赖 pin 同 vendored proto 的 `c33fffa`，wire 契约零漂移）：
+上游 `marlin-agent-app-server` 是**库**（`AppServer` + `SessionBinding`），不产独立二进制；`host-bin/` 是本仓库的薄包装 crate（git 依赖 pin 同 vendored proto 的 `e409fa6`，wire 契约零漂移）：
 
 ```
 sidecar 传参/env

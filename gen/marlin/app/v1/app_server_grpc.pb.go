@@ -28,7 +28,9 @@ const (
 	AppServer_StartSessionTurn_FullMethodName           = "/marlin.app.v1.AppServer/StartSessionTurn"
 	AppServer_WatchSessionTurn_FullMethodName           = "/marlin.app.v1.AppServer/WatchSessionTurn"
 	AppServer_CancelSessionTurn_FullMethodName          = "/marlin.app.v1.AppServer/CancelSessionTurn"
+	AppServer_OpenSession_FullMethodName                = "/marlin.app.v1.AppServer/OpenSession"
 	AppServer_GetSessionSummary_FullMethodName          = "/marlin.app.v1.AppServer/GetSessionSummary"
+	AppServer_GetSessionTurnStatus_FullMethodName       = "/marlin.app.v1.AppServer/GetSessionTurnStatus"
 	AppServer_GetSessionTurnCancellation_FullMethodName = "/marlin.app.v1.AppServer/GetSessionTurnCancellation"
 )
 
@@ -42,7 +44,9 @@ type AppServerClient interface {
 	StartSessionTurn(ctx context.Context, in *StartSessionTurnRequest, opts ...grpc.CallOption) (*StartSessionTurnResponse, error)
 	WatchSessionTurn(ctx context.Context, in *WatchSessionTurnRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SessionTurnEvent], error)
 	CancelSessionTurn(ctx context.Context, in *CancelSessionTurnRequest, opts ...grpc.CallOption) (*CancelSessionTurnResponse, error)
+	OpenSession(ctx context.Context, in *OpenSessionRequest, opts ...grpc.CallOption) (*OpenSessionResponse, error)
 	GetSessionSummary(ctx context.Context, in *GetSessionSummaryRequest, opts ...grpc.CallOption) (*GetSessionSummaryResponse, error)
+	GetSessionTurnStatus(ctx context.Context, in *GetSessionTurnStatusRequest, opts ...grpc.CallOption) (*GetSessionTurnStatusResponse, error)
 	GetSessionTurnCancellation(ctx context.Context, in *GetSessionTurnCancellationRequest, opts ...grpc.CallOption) (*GetSessionTurnCancellationResponse, error)
 }
 
@@ -122,10 +126,30 @@ func (c *appServerClient) CancelSessionTurn(ctx context.Context, in *CancelSessi
 	return out, nil
 }
 
+func (c *appServerClient) OpenSession(ctx context.Context, in *OpenSessionRequest, opts ...grpc.CallOption) (*OpenSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OpenSessionResponse)
+	err := c.cc.Invoke(ctx, AppServer_OpenSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *appServerClient) GetSessionSummary(ctx context.Context, in *GetSessionSummaryRequest, opts ...grpc.CallOption) (*GetSessionSummaryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetSessionSummaryResponse)
 	err := c.cc.Invoke(ctx, AppServer_GetSessionSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServerClient) GetSessionTurnStatus(ctx context.Context, in *GetSessionTurnStatusRequest, opts ...grpc.CallOption) (*GetSessionTurnStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSessionTurnStatusResponse)
+	err := c.cc.Invoke(ctx, AppServer_GetSessionTurnStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +176,9 @@ type AppServerServer interface {
 	StartSessionTurn(context.Context, *StartSessionTurnRequest) (*StartSessionTurnResponse, error)
 	WatchSessionTurn(*WatchSessionTurnRequest, grpc.ServerStreamingServer[SessionTurnEvent]) error
 	CancelSessionTurn(context.Context, *CancelSessionTurnRequest) (*CancelSessionTurnResponse, error)
+	OpenSession(context.Context, *OpenSessionRequest) (*OpenSessionResponse, error)
 	GetSessionSummary(context.Context, *GetSessionSummaryRequest) (*GetSessionSummaryResponse, error)
+	GetSessionTurnStatus(context.Context, *GetSessionTurnStatusRequest) (*GetSessionTurnStatusResponse, error)
 	GetSessionTurnCancellation(context.Context, *GetSessionTurnCancellationRequest) (*GetSessionTurnCancellationResponse, error)
 	mustEmbedUnimplementedAppServerServer()
 }
@@ -179,8 +205,14 @@ func (UnimplementedAppServerServer) WatchSessionTurn(*WatchSessionTurnRequest, g
 func (UnimplementedAppServerServer) CancelSessionTurn(context.Context, *CancelSessionTurnRequest) (*CancelSessionTurnResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelSessionTurn not implemented")
 }
+func (UnimplementedAppServerServer) OpenSession(context.Context, *OpenSessionRequest) (*OpenSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method OpenSession not implemented")
+}
 func (UnimplementedAppServerServer) GetSessionSummary(context.Context, *GetSessionSummaryRequest) (*GetSessionSummaryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSessionSummary not implemented")
+}
+func (UnimplementedAppServerServer) GetSessionTurnStatus(context.Context, *GetSessionTurnStatusRequest) (*GetSessionTurnStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSessionTurnStatus not implemented")
 }
 func (UnimplementedAppServerServer) GetSessionTurnCancellation(context.Context, *GetSessionTurnCancellationRequest) (*GetSessionTurnCancellationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSessionTurnCancellation not implemented")
@@ -282,6 +314,24 @@ func _AppServer_CancelSessionTurn_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AppServer_OpenSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OpenSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServerServer).OpenSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppServer_OpenSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServerServer).OpenSession(ctx, req.(*OpenSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AppServer_GetSessionSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSessionSummaryRequest)
 	if err := dec(in); err != nil {
@@ -296,6 +346,24 @@ func _AppServer_GetSessionSummary_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AppServerServer).GetSessionSummary(ctx, req.(*GetSessionSummaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppServer_GetSessionTurnStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSessionTurnStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServerServer).GetSessionTurnStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppServer_GetSessionTurnStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServerServer).GetSessionTurnStatus(ctx, req.(*GetSessionTurnStatusRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -338,8 +406,16 @@ var AppServer_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AppServer_CancelSessionTurn_Handler,
 		},
 		{
+			MethodName: "OpenSession",
+			Handler:    _AppServer_OpenSession_Handler,
+		},
+		{
 			MethodName: "GetSessionSummary",
 			Handler:    _AppServer_GetSessionSummary_Handler,
+		},
+		{
+			MethodName: "GetSessionTurnStatus",
+			Handler:    _AppServer_GetSessionTurnStatus_Handler,
 		},
 		{
 			MethodName: "GetSessionTurnCancellation",

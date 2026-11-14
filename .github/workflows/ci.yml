@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: oven-sh/setup-bun@v2
+      - name: Go build, vet, test
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+      - name: Generated code is up to date
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/bufbuild/buf/cmd/buf@latest
+          bun install --frozen-lockfile
+          ./scripts/gen-stubs.sh
+          bun run generate
+          git diff --exit-code gen src/mygo.ts
+
+  host:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host-bin
+      - name: Build the host binary
+        run: cargo build --manifest-path host-bin/Cargo.toml
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Typecheck and build the frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run build:web

@@ -412,9 +412,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.20.3"
+version = "3.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+checksum = "87a0cf66fd1eb2fb7b822cb78370d82303750809bc6ba855f3f58e517d3238db"
 
 [[package]]
 name = "bytemuck"
@@ -1874,7 +1874,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 [[package]]
 name = "marlin-agent-app-server"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "async-stream",
  "marlin-agent-protocol",
@@ -1893,13 +1893,24 @@ dependencies = [
 [[package]]
 name = "marlin-agent-environment"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "async-trait",
+ "marlin-agent-gitops",
  "marlin-agent-protocol",
- "marlin-git-utils",
- "marlin-workspace-protocol",
+ "serde",
  "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
+name = "marlin-agent-gitops"
+version = "0.1.0"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
+dependencies = [
+ "marlin-agent-protocol",
+ "serde",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -1907,7 +1918,7 @@ dependencies = [
 [[package]]
 name = "marlin-agent-graph"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "serde",
 ]
@@ -1915,7 +1926,7 @@ dependencies = [
 [[package]]
 name = "marlin-agent-protocol"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "marlin-agent-graph",
  "marlin-gerbil-ir",
@@ -1927,7 +1938,7 @@ dependencies = [
 [[package]]
 name = "marlin-agent-runtime"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "aho-corasick",
  "globset",
@@ -1938,6 +1949,8 @@ dependencies = [
  "marlin-agent-sessions",
  "parking_lot",
  "process-wrap",
+ "ring",
+ "semver",
  "serde",
  "serde_json",
  "sysinfo",
@@ -1952,7 +1965,7 @@ dependencies = [
 [[package]]
 name = "marlin-agent-sessions"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "marlin-agent-protocol",
  "marlin-agent-storage",
@@ -1963,7 +1976,7 @@ dependencies = [
 [[package]]
 name = "marlin-agent-storage"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "mrr-data-backend",
  "serde",
@@ -1974,7 +1987,7 @@ dependencies = [
 [[package]]
 name = "marlin-agent-stream"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "async-stream",
  "marlin-agent-protocol",
@@ -1986,29 +1999,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "marlin-context-org-model"
-version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "marlin-gerbil-ir"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
+source = "git+https://github.com/tao3k/marlin-agent-core?rev=e409fa63a6cfd2bba492d44392c8c0f9848ab284#e409fa63a6cfd2bba492d44392c8c0f9848ab284"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "marlin-git-utils"
-version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
-dependencies = [
- "marlin-agent-protocol",
- "thiserror 2.0.21",
- "tokio",
 ]
 
 [[package]]
@@ -2027,49 +2022,6 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "tonic",
  "weaver-llm",
-]
-
-[[package]]
-name = "marlin-workspace-protocol"
-version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
-dependencies = [
- "async-trait",
- "marlin-context-org-model",
- "marlin-workspace-query",
- "marlin-workspace-status",
- "marlin-workspace-view",
- "serde",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "marlin-workspace-query"
-version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
-dependencies = [
- "marlin-context-org-model",
- "serde",
-]
-
-[[package]]
-name = "marlin-workspace-status"
-version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
-dependencies = [
- "marlin-agent-protocol",
- "marlin-context-org-model",
- "marlin-gerbil-ir",
- "serde",
-]
-
-[[package]]
-name = "marlin-workspace-view"
-version = "0.1.0"
-source = "git+https://github.com/tao3k/marlin-agent-core?rev=c33fffa15c2a8864511c96b9231bf28508480656#c33fffa15c2a8864511c96b9231bf28508480656"
-dependencies = [
- "marlin-context-org-model",
- "serde",
 ]
 
 [[package]]
@@ -2194,9 +2146,9 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "mio"
-version = "1.2.4"
+version = "1.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
+checksum = "20521a903f02b0a573cd6840e9d0a5a0cc043d361fe924092cd70f8556cc9c4a"
 dependencies = [
  "libc",
  "wasi",

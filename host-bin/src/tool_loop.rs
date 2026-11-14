@@ -148,7 +148,7 @@ async fn run_turn(
         };
     }
 
-    for round in 0..max_rounds {
+    for _round in 0..max_rounds {
         let req = ModelGatewayRequest::new(endpoint.clone(), messages.clone())
             .with_options(options.clone());
         let mut source = match inner.stream(req).await {
