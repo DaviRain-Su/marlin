@@ -6,10 +6,10 @@
     <title>Marlin</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
-  <body>
+  <body class="pristine">
     <div id="app">
       <aside id="sidebar">
-        <div class="brand"><span class="brand-mark">✳</span>Marlin</div>
+        <button id="new-chat" type="button" class="new-chat">＋ 新对话</button>
         <div class="side-card">
           <div class="status-line">
             <span id="status-dot" class="dot" data-state="starting"></span>
@@ -18,30 +18,55 @@
           <button id="chip-provider" type="button" class="chip" title="点击修改模型设置">—</button>
           <button id="chip-tools" type="button" class="chip" title="点击修改工具设置">—</button>
         </div>
+        <div class="recents">
+          <div class="recents-head">最近</div>
+          <div id="session-list"></div>
+        </div>
         <div class="side-bottom">
           <button id="settings-toggle" type="button" class="side-btn">⚙&nbsp;设置</button>
-          <div class="side-note">单会话 · 历史持久化</div>
+          <div class="side-note">历史持久化于本机 journal</div>
         </div>
       </aside>
       <main>
+        <div id="topbar">
+          <button id="side-toggle" type="button" title="收起/展开侧栏">☰</button>
+          <div id="session-title" class="session-title">新对话</div>
+          <span class="spacer"></span>
+        </div>
         <div id="banner" class="banner hidden"></div>
-        <div id="empty" class="empty">
+        <div id="thread">
+          <div id="messages" aria-live="polite"></div>
+        </div>
+        <div id="empty">
           <div class="greet-mark">✳</div>
           <h2 id="greeting">你好</h2>
-          <p class="empty-sub">向 Marlin 提问。工具调用只在设置里指定的目录内执行。</p>
-        </div>
-        <div id="messages" aria-live="polite"></div>
-        <form id="composer">
-          <div class="composer-card">
-            <textarea id="draft" rows="1" placeholder="给 Marlin 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
-            <div class="composer-actions">
-              <button type="button" id="composer-chip" class="chip">—</button>
-              <span class="spacer"></span>
-              <button id="stop" type="button" class="stop-btn hidden" title="停止生成">■</button>
-              <button id="send" type="submit" title="发送">↑</button>
-            </div>
+          <div class="ideas">
+            <div class="ideas-head">试试这些</div>
+            <button type="button" class="idea" data-text="用一句话介绍你自己">
+              <span class="idea-icon">✳</span>用一句话介绍你自己
+            </button>
+            <button type="button" class="idea" data-text="用 ls 看看工具目录里有什么，然后总结">
+              <span class="idea-icon">📁</span>看看工具目录里有什么
+            </button>
+            <button type="button" class="idea" data-text="写一个 Go 语言的并发安全计数器，附简要说明">
+              <span class="idea-icon">⌨️</span>写一段并发安全的 Go 代码
+            </button>
           </div>
-        </form>
+        </div>
+        <div id="composer-wrap">
+          <form id="composer">
+            <div class="composer-card">
+              <textarea id="draft" rows="1" placeholder="给 Marlin 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
+              <div class="composer-actions">
+                <button type="button" id="composer-chip" class="chip">—</button>
+                <span class="spacer"></span>
+                <button id="stop" type="button" class="stop-btn hidden" title="停止生成">■</button>
+                <button id="send" type="submit" title="发送">↑</button>
+              </div>
+            </div>
+          </form>
+          <div class="disclaimer">Marlin 可能会犯错，请核查重要信息。</div>
+        </div>
       </main>
     </div>
     <div id="settings-overlay" class="overlay hidden">

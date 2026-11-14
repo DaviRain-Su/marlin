@@ -136,10 +136,9 @@ func Start(ctx context.Context, opts Options) (*Host, error) {
 		h.stop(2 * time.Second)
 		return nil, fmt.Errorf("sidecar: host not ready: %w", err)
 	}
-	if caps.SessionID == "" {
-		h.stop(2 * time.Second)
-		return nil, fmt.Errorf("sidecar: host has no Session binding (misconfigured host)")
-	}
+	// A multi-session host resolves Sessions on demand and reports no
+	// single binding in capabilities; an empty SessionID is expected
+	// there. The App binds its registry's current session instead.
 	h.Caps = caps
 	opts.Logger.Info("sidecar host ready", "addr", addr, "session", caps.SessionID)
 	return h, nil

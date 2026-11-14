@@ -13,9 +13,9 @@
 
 mod tool_loop;
 
-use std::{env, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, env, path::PathBuf, sync::Arc, time::Duration};
 
-use marlin_agent_app_server::{AppServer, SessionBinding};
+use marlin_agent_app_server::{AppServer, SessionBinding, SessionOpen};
 use marlin_agent_protocol::ModelEndpoint;
 use marlin_agent_runtime::{TokioAgentRuntime, TokioAgentRuntimeBuildRequest};
 use marlin_agent_sessions::{AgentSessionContext, ContextVisibility};
@@ -24,6 +24,7 @@ use marlin_agent_storage::{
     TursoOptimizationProfile,
 };
 use marlin_agent_stream::{ModelStreamOutputLimit, WeaverModelGateway};
+use tokio::sync::Mutex;
 use weaver_llm::{Authentication, Client, Endpoint, Protocol};
 
 #[derive(Default, serde::Deserialize)]
@@ -72,6 +73,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     rt.block_on(serve(bind_addr, session_id, cfg, config_path))
+    // --session-id stays accepted for CLI compatibility; with the
+    // session_lookup wiring above, Session identity is client-minted and
+    // capabilities no longer report a single bound Session.
 }
 
 fn toml_cfg(path: &PathBuf) -> Result<FileConfig, Box<dyn std::error::Error>> {
@@ -80,7 +84,7 @@ fn toml_cfg(path: &PathBuf) -> Result<FileConfig, Box<dyn std::error::Error>> {
     Ok(toml::from_str(&raw)?)
 }
 
-async fn serve(bind_addr: String, session_flag: String, cfg: FileConfig, config_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let provider = cfg.provider.clone().unwrap_or_else(|| "kimi".into());
     let protocol = match cfg.protocol.as_deref().unwrap_or(match provider.as_str() {
         "deepseek" => "openai",
@@ -195,19 +199,10 @@ async fn serve(bind_addr: String, session_flag: String, cfg: FileConfig, config_
     })
     .await?;
 
-    // --session-id > config (already merged into session_flag by the caller
-    // defaults) > gui-session, mirroring devhost.
-    let session_id = if session_flag.is_empty() { "gui-session".to_owned() } else { session_flag };
-    let session = AgentSessionContext::root(
-        marlin_agent_sessions::SessionId::new(session_id.clone()),
-        ContextVisibility::default_runtime(),
-    );
-    let (runtime, _events) = TokioAgentRuntime::from_build_request(
-        TokioAgentRuntimeBuildRequest::runtime_root(64).with_session(session),
-    );
-
     // Tool surface (opt-in): with tools_workspace the host closes the tool
-    // loop itself; the wire still carries pure text turns.
+    // loop itself; the wire still carries pure text turns. The loop's shell
+    // executor is session-agnostic (the workspace is absolute), so one
+    // host-owned runtime context serves every session's tool calls.
     let gateway: Arc<dyn marlin_agent_stream::ModelStreamingGateway> = match &cfg.tools_workspace {
         Some(workspace) if !workspace.trim().is_empty() => {
             let allow = cfg.tools_allow.clone().unwrap_or_else(|| "*".into());
@@ -218,17 +213,59 @@ async fn serve(bind_addr: String, session_flag: String, cfg: FileConfig, config_
                 "tool surface: run_command at {workspace} (allow {:?}, max {max_rounds} rounds/turn)",
                 surface.allow,
             );
+            let tool_session = AgentSessionContext::root(
+                marlin_agent_sessions::SessionId::new("marlin-tool-host"),
+                ContextVisibility::default_runtime(),
+            );
+            let (tool_runtime, _tool_events) = TokioAgentRuntime::from_build_request(
+                TokioAgentRuntimeBuildRequest::runtime_root(64).with_session(tool_session),
+            );
             Arc::new(tool_loop::ToolLoopGateway::new(
                 weaver,
                 surface,
-                runtime.context(),
+                tool_runtime.context(),
                 max_rounds,
             ))
         }
         _ => weaver,
     };
 
-    let binding = SessionBinding::new(storage, ProjectId::new("desktop")?, AgentId::new("app")?, runtime)?;
+    // Multi-session: every Session ID a client addresses gets its own
+    // SessionBinding (runtime + journal partition) on first use, created
+    // through the upstream session_lookup hook. Session identity is
+    // client-minted, so both open modes resolve the same way — an id that
+    // only lives in the journal replays its history from storage.
+    let bindings: Arc<Mutex<HashMap<String, SessionBinding<TursoAgentStorage>>>> = Arc::default();
+    let lookup_storage = storage.clone();
+    let lookup_project = ProjectId::new("desktop")?;
+    let lookup_agent = AgentId::new("app")?;
+    let lookup_bindings = bindings.clone();
+    let lookup = move |_metadata: tonic::metadata::MetadataMap,
+                       id: marlin_agent_storage::SessionId,
+                       _mode: SessionOpen| {
+        let bindings = lookup_bindings.clone();
+        let storage = lookup_storage.clone();
+        let project = lookup_project.clone();
+        let agent = lookup_agent.clone();
+        async move {
+            let key = id.as_str().to_owned();
+            let mut map = bindings.lock().await;
+            if let Some(binding) = map.get(&key) {
+                return Ok(binding.clone());
+            }
+            let session = AgentSessionContext::root(
+                marlin_agent_sessions::SessionId::new(key.clone()),
+                ContextVisibility::default_runtime(),
+            );
+            let (runtime, _events) = TokioAgentRuntime::from_build_request(
+                TokioAgentRuntimeBuildRequest::runtime_root(64).with_session(session),
+            );
+            let binding = SessionBinding::new(storage, project, agent, runtime)
+                .map_err(|e| tonic::Status::internal(format!("session bind: {e}")))?;
+            map.insert(key, binding.clone());
+            Ok(binding)
+        }
+    };
 
     let token = env::var("MARLIN_HOST_AUTH_TOKEN")?;
     let service = AppServer::new(
@@ -242,7 +279,7 @@ async fn serve(bind_addr: String, session_flag: String, cfg: FileConfig, config_
             }
         },
     )?
-    .with_session(binding)
+    .with_session_lookup(lookup)
     .into_service();
 
     println!("host ready addr={bind_addr}");

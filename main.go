@@ -10,15 +10,16 @@ import (
 	"marlin-desktop/app"
 )
 
-// storePath is the projection file: <config>/marlin-desktop/session.json.
-func storePath() string {
+// storeDir is the directory holding the session registry and the
+// per-session projection files: <config>/marlin-desktop.
+func storeDir() string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = os.TempDir()
 	}
 	d := filepath.Join(dir, "marlin-desktop")
 	_ = os.MkdirAll(d, 0o700)
-	return filepath.Join(d, "session.json")
+	return d
 }
 
 // configPath is the host config the settings UI edits:
@@ -32,7 +33,8 @@ func configPath() string {
 }
 
 func main() {
-	chat := app.NewChatService(app.LoadStore(storePath()))
+	registry := app.LoadSessionRegistry(filepath.Join(storeDir(), "registry.json"))
+	chat := app.NewChatService(app.LoadStore(storeDir()), registry)
 	mygo.Bind(chat)
 	mygo.Bind(app.NewSettingsService(configPath()))
 

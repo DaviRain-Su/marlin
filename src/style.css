@@ -1,5 +1,7 @@
 /* Claude-desktop-inspired visual language: warm paper background, plain
-   assistant text (no bubble), one rounded composer card, terracotta accent. */
+   assistant text (no bubble), one rounded composer card, terracotta accent.
+   The composer centers with the greeting while the conversation is empty
+   (body.pristine), like Claude's new-session view. */
 
 :root {
   color-scheme: light dark;
@@ -17,6 +19,7 @@
   --ok: #5a7d4f;
   --bubble-user: #f0eee5;
   --code-bg: color-mix(in srgb, #1f1e1d 6%, transparent);
+  --code-head: color-mix(in srgb, #1f1e1d 9%, transparent);
   --shadow: 0 8px 30px rgb(0 0 0 / 8%);
 }
 
@@ -30,6 +33,7 @@
     --border: color-mix(in srgb, #f5f4ef 12%, transparent);
     --bubble-user: #3a3937;
     --code-bg: color-mix(in srgb, #f5f4ef 8%, transparent);
+    --code-head: color-mix(in srgb, #f5f4ef 12%, transparent);
     --shadow: 0 8px 30px rgb(0 0 0 / 40%);
   }
 }
@@ -50,6 +54,8 @@ body {
 
 .hidden { display: none !important; }
 
+.spacer { flex: 1; }
+
 /* ---- Sidebar ---- */
 
 #sidebar {
@@ -61,22 +67,69 @@ body {
   padding: 1rem 0.8rem;
   background: var(--side);
   border-right: 1px solid var(--border);
+  transition: margin-left 0.18s ease;
 }
+
+#sidebar.side-hidden { margin-left: -228px; }
 
 @media (max-width: 700px) {
   #sidebar { display: none; }
 }
 
-.brand {
-  font-family: Georgia, "Songti SC", "STSong", serif;
-  font-size: 1.15rem;
-  padding: 0 0.4rem;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+.new-chat {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
 }
 
-.brand-mark { color: var(--accent); }
+.new-chat:hover { background: var(--code-bg); }
+
+.brand,
+.recents-head {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.recents {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 0.2rem;
+}
+
+#session-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-item {
+  font: inherit;
+  font-size: 0.83rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item:hover { background: var(--code-bg); }
+.session-item.active { background: var(--code-head); font-weight: 500; }
 
 .side-card {
   background: var(--card);
@@ -126,7 +179,6 @@ body {
 .chip:hover { background: var(--code-bg); }
 
 .side-bottom {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -161,8 +213,38 @@ main {
   min-width: 0;
 }
 
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.9rem;
+  flex: none;
+}
+
+#side-toggle {
+  font: inherit;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#side-toggle:hover { background: var(--code-bg); }
+
+.session-title {
+  font-family: Georgia, "Songti SC", "STSong", serif;
+  font-size: 0.95rem;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .banner {
-  margin: 0.8rem auto 0;
+  margin: 0 auto;
   width: min(760px, calc(100% - 2rem));
   padding: 0.45rem 0.85rem;
   border-radius: 10px;
@@ -170,39 +252,78 @@ main {
   border: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.85rem;
+  flex: none;
 }
 
 .banner[data-state="error"] { color: var(--danger); }
 .banner[data-state="reconnecting"] { color: var(--warn); }
 
-.empty {
-  flex: 1;
+/* Empty session: greeting + ideas + composer centered as one block. */
+body.pristine #thread { display: none; }
+body.pristine main { justify-content: center; }
+body.pristine #topbar { position: absolute; }
+body.pristine #composer-wrap { margin-top: 1.2rem; }
+
+#empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding-bottom: 3rem;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  flex: none;
 }
 
-.greet-mark { font-size: 1.6rem; color: var(--accent); }
+body:not(.pristine) #empty { display: none; }
+
+.greet-mark { font-size: 2.1rem; color: var(--accent); }
 
 #greeting {
   font-family: Georgia, "Songti SC", "STSong", serif;
   font-weight: 500;
-  font-size: 1.7rem;
-  margin: 0;
+  font-size: 1.9rem;
+  margin: 0 0 0.4rem;
 }
 
-.empty-sub {
+.ideas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: min(680px, 100%);
+  margin-top: 1.6rem;
+}
+
+.ideas-head {
+  font-size: 0.75rem;
   color: var(--muted);
+  padding: 0 0.5rem 0.2rem;
+}
+
+.idea {
+  font: inherit;
   font-size: 0.88rem;
-  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+}
+
+.idea:hover { background: var(--code-bg); }
+
+.idea-icon { font-size: 0.9rem; color: var(--muted); }
+
+#thread {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 #messages {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1.4rem;
@@ -235,7 +356,7 @@ main {
   margin-top: 0.35rem;
 }
 
-.copy-btn {
+.action-btn {
   font: inherit;
   font-size: 0.72rem;
   color: var(--muted);
@@ -247,8 +368,8 @@ main {
   opacity: 0;
 }
 
-.msg:hover .copy-btn { opacity: 1; }
-.copy-btn:hover { background: var(--code-bg); }
+.msg:hover .action-btn { opacity: 1; }
+.action-btn:hover { background: var(--code-bg); }
 
 .pill {
   margin-top: 0.35rem;
@@ -258,6 +379,21 @@ main {
 
 .pill.REMOTE_UNCERTAIN { color: var(--warn); }
 .pill.error { color: var(--danger); }
+
+.pill.thinking::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  text-align: left;
+  animation: dots 1.2s steps(4) infinite;
+}
+
+@keyframes dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}
 
 /* Rendered model markdown (streamed into .msg.assistant). */
 .msg-text.markdown > :first-child { margin-top: 0; }
@@ -273,6 +409,54 @@ main {
 .msg-text.markdown ul,
 .msg-text.markdown ol { margin: 0.45em 0; padding-left: 1.4em; }
 .msg-text.markdown li { margin: 0.2em 0; }
+
+/* Code blocks: header bar with language label + copy, highlighted body. */
+.codeblock {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 0.55em 0;
+}
+
+.codeblock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.7rem;
+  background: var(--code-head);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.code-copy {
+  font: inherit;
+  font-size: 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 6px;
+}
+
+.code-copy:hover { color: var(--fg); }
+
+.msg-text.markdown pre {
+  background: var(--code-bg);
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  padding: 0.7em 0.95em;
+  overflow-x: auto;
+}
+
+.msg-text.markdown pre code {
+  background: none;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.84em;
+}
+
 .msg-text.markdown code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.88em;
@@ -280,18 +464,23 @@ main {
   padding: 0.12em 0.35em;
   border-radius: 5px;
 }
-.msg-text.markdown pre {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.75em 0.95em;
-  overflow-x: auto;
+
+/* Minimal highlight.js palette, light and dark. */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #a3543a; }
+.hljs-string, .hljs-attribute { color: #4a7a43; }
+.hljs-comment, .hljs-quote { color: var(--muted); font-style: italic; }
+.hljs-number, .hljs-literal { color: #8a6d3b; }
+.hljs-title, .hljs-function .hljs-title, .hljs-name { color: #3d5a80; }
+.hljs-type, .hljs-class .hljs-title { color: #7c5caf; }
+
+@media (prefers-color-scheme: dark) {
+  .hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #d98d6f; }
+  .hljs-string, .hljs-attribute { color: #9cc08f; }
+  .hljs-number, .hljs-literal { color: #d3b06e; }
+  .hljs-title, .hljs-function .hljs-title, .hljs-name { color: #8fb4dd; }
+  .hljs-type, .hljs-class .hljs-title { color: #b9a0e0; }
 }
-.msg-text.markdown pre code {
-  background: none;
-  padding: 0;
-  font-size: 0.84em;
-}
+
 .msg-text.markdown blockquote {
   margin: 0.45em 0;
   padding-left: 0.85em;
@@ -309,9 +498,9 @@ main {
 
 /* ---- Composer ---- */
 
-#composer {
+#composer-wrap {
   width: min(760px, calc(100% - 2rem));
-  margin: 0 auto 1.1rem;
+  margin: 0 auto 0.7rem;
   flex: none;
 }
 
@@ -348,8 +537,6 @@ main {
   gap: 0.5rem;
 }
 
-.composer-actions .spacer { flex: 1; }
-
 .round-btn {
   font: inherit;
   width: 34px;
@@ -368,6 +555,15 @@ main {
   color: #fff;
   font-size: 1.05rem;
   line-height: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #send:hover { background: var(--accent-hover); }
@@ -377,6 +573,22 @@ main {
   background: var(--fg);
   color: var(--bg);
   font-size: 0.6rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.disclaimer {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 0.5rem 0 0.3rem;
 }
 
 input,
@@ -400,9 +612,7 @@ select:focus {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
 
-button {
-  cursor: pointer;
-}
+button { cursor: pointer; }
 
 button:disabled {
   opacity: 0.5;
@@ -467,8 +677,6 @@ button:disabled {
   align-items: center;
   gap: 0.5rem;
 }
-
-.settings-actions .spacer { flex: 1; }
 
 .settings-actions button {
   padding: 0.5rem 0.9rem;

@@ -132,12 +132,17 @@ func Connect(chat *ChatService, win *mygo.Window) {
 		failures = 0
 		setCurrentHost(h)
 
-		// Bind the projection store to this Session (a different binding
-		// clears the view; design §6.6).
-		if err := chat.store.BindSession(h.Caps.SessionID); err != nil {
+		// Bind the projection store and session manager to the registry's
+		// current Session (session identity is client-minted; capabilities
+		// of a multi-session host report no single binding, design §6.6).
+		sid := chat.SessionID()
+		if sid == "" {
+			sid = "gui-session"
+		}
+		if err := chat.store.BindSession(sid); err != nil {
 			slog.Warn("store bind failed", "err", err)
 		}
-		mgr := client.NewSessionManager(h.Conn(), h.Caps.SessionID)
+		mgr := client.NewSessionManager(h.Conn(), sid)
 		// A fresh manager inherits the journal's latest committed turn so a
 		// host restart (or app reopen) does not resend stale after_turn.
 		if err := mgr.SyncFromSummary(ctx); err != nil {

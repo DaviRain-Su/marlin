@@ -75,6 +75,13 @@ func NewSessionManager(conn *Conn, sessionID string) *SessionManager {
 	return &SessionManager{conn: conn, sessionID: sessionID, records: map[string]pendingSubmission{}}
 }
 
+// WithSession returns a manager for another Session over the same
+// connection. The watermark starts at zero — call SyncFromSummary to
+// inherit that Session's committed turns (the switch/restart path).
+func (m *SessionManager) WithSession(sessionID string) *SessionManager {
+	return NewSessionManager(m.conn, sessionID)
+}
+
 // SessionID is the host-bound Session this manager addresses.
 func (m *SessionManager) SessionID() string { return m.sessionID }
 

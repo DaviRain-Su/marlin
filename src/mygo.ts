@@ -21,6 +21,14 @@ export interface ConnState {
   message?: string;
 }
 
+/** SessionMeta is one entry in the conversation list the sidebar renders. */
+export interface SessionMeta {
+  id: string;
+  title: string;
+  /** UpdatedAt is unix millis as a string (u64 over JSON). */
+  updatedAt?: string;
+}
+
 /**
  * SettingsInput is one save from the page. An empty APIKey keeps the
  * stored credential ("" is indistinguishable from "unchanged" over the
@@ -105,6 +113,10 @@ export interface TurnProgress {
  * resume in the generated client.
  */
 export const ChatService = {
+  /** NewSession mints and opens a fresh conversation. */
+  newSession(): Promise<SessionMeta> {
+    return call("ChatService.NewSession");
+  },
   /**
    * Resume re-admits the pending submission after a restart: the SAME id,
    * text and original after_turn resolve to the original turn by idempotency
@@ -122,6 +134,14 @@ export const ChatService = {
   send(text: string, out: Channel<TurnProgress>): Promise<void> {
     return call("ChatService.Send", text, out);
   },
+  /** SessionID returns the session the service is currently bound to. */
+  sessionID(): Promise<string> {
+    return call("ChatService.SessionID");
+  },
+  /** Sessions returns the conversation list for the sidebar. */
+  sessions(): Promise<SessionMeta[]> {
+    return call("ChatService.Sessions");
+  },
   /** State returns the current session snapshot for the page. */
   state(): Promise<Snapshot> {
     return call("ChatService.State");
@@ -129,6 +149,10 @@ export const ChatService = {
   /** Stop requests cancellation of the active turn and returns its receipt. */
   stop(): Promise<CancelInfo> {
     return call("ChatService.Stop");
+  },
+  /** SwitchSession opens another conversation from the list. */
+  switchSession(id: string): Promise<void> {
+    return call("ChatService.SwitchSession", id);
   },
 } as const;
 

@@ -1,26 +1,54 @@
 import { Channel } from "mygo-runtime";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import hljs from "highlight.js/lib/common";
 import { ChatService, SettingsService, events, type StoredTurn, type TurnProgress } from "./mygo";
 
 // Model output is untrusted content rendered inside the page that holds the
-// Go IPC bridge — sanitize aggressively before it becomes HTML.
+// Go IPC bridge — sanitize aggressively before it becomes HTML. Code blocks
+// get a language label, highlighting and a per-block copy action.
 marked.setOptions({ async: false, gfm: true, breaks: true });
+marked.use({
+  renderer: {
+    code({ text, lang }: { text: string; lang?: string }) {
+      const language = (lang || "").trim().split(/\s+/)[0] || "";
+      let body: string;
+      try {
+        body = language && hljs.getLanguage(language)
+          ? hljs.highlight(text, { language }).value
+          : hljs.highlightAuto(text).value;
+      } catch {
+        body = text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+      }
+      const label = language || "text";
+      return (
+        `<div class="codeblock"><div class="codeblock-head"><span>${label}</span>` +
+        `<button type="button" class="code-copy">复制</button></div>` +
+        `<pre><code class="hljs">${body}</code></pre></div>`
+      );
+    },
+  },
+});
 function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(marked.parse(text) as string, {
     FORBID_TAGS: ["style", "form", "iframe"],
     FORBID_ATTR: ["onerror", "onclick", "onload"],
+    ADD_ATTR: ["target"],
   });
 }
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
+const thread = $("#thread");
 const messages = $("#messages");
+const emptyState = $("#empty");
 const draft = $<HTMLTextAreaElement>("#draft");
 const sendBtn = $<HTMLButtonElement>("#send");
 const stopBtn = $<HTMLButtonElement>("#stop");
 const banner = $("#banner");
-const emptyState = $("#empty");
+const sessionTitle = $("#session-title");
+const sessionList = $("#session-list");
+const composerWrap = $("#composer-wrap");
 
 // Sidebar status + chips.
 const statusDot = $("#status-dot");
@@ -42,6 +70,8 @@ const settingsPath = $("#settings-path");
 
 let busy = false;
 let ready = false;
+/** Current session id as the frontend sees it (drives the list highlight). */
+let currentSessionId = "";
 
 const STATUS_LABEL: Record<string, string> = {
   ready: "已连接",
@@ -75,10 +105,31 @@ function showBanner(state: string, message?: string) {
 // (host restarts must not blank the view).
 events.status.on((s) => {
   showBanner(s.state, s.message);
-  if (s.state === "ready") void renderHistory();
+  if (s.state === "ready") void refreshAll();
 });
 
-// ---- Sidebar chips: the current provider/model and tool surface ----
+// ---- Sidebar: conversation list, chips, connection state ----
+
+async function refreshSessions() {
+  try {
+    const items = await ChatService.sessions();
+    sessionList.replaceChildren(
+      ...items.map((it) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `session-item${it.id === currentSessionId ? " active" : ""}`;
+        btn.textContent = it.title || "新对话";
+        btn.title = it.title || it.id;
+        btn.addEventListener("click", () => void switchSession(it.id));
+        return btn;
+      }),
+    );
+    const current = items.find((it) => it.id === currentSessionId);
+    if (current) sessionTitle.textContent = current.title || "新对话";
+  } catch (err) {
+    console.error("sessions refresh failed", err);
+  }
+}
 
 async function refreshChips() {
   try {
@@ -94,15 +145,58 @@ async function refreshChips() {
   }
 }
 
-function updateEmptyState() {
-  emptyState.classList.toggle("hidden", messages.children.length > 0);
+/** Keeps list highlight, title and pristine layout in step. */
+function updatePristine() {
+  document.body.classList.toggle("pristine", messages.children.length === 0);
 }
+
+async function refreshAll() {
+  const snap = await ChatService.state();
+  currentSessionId = snap.sessionId || currentSessionId;
+  await Promise.all([renderHistory(), refreshSessions(), refreshChips()]);
+  return snap;
+}
+
+async function switchSession(id: string) {
+  if (busy || id === currentSessionId) return;
+  try {
+    await ChatService.switchSession(id);
+    currentSessionId = id;
+    await Promise.all([renderHistory(), refreshSessions()]);
+  } catch (err) {
+    showBanner("error", err instanceof Error ? err.message : String(err));
+  }
+}
+
+$("#new-chat").addEventListener("click", () => {
+  void (async () => {
+    if (busy) return;
+    const meta = await ChatService.newSession();
+    currentSessionId = meta.id;
+    await Promise.all([renderHistory(), refreshSessions()]);
+    draft.focus();
+  })().catch((err) => showBanner("error", err instanceof Error ? err.message : String(err)));
+});
+
+// Sidebar collapse, persisted like Claude's.
+{
+  const side = $("#sidebar");
+  const hidden = localStorage.getItem("marlin.side-hidden") === "1";
+  side.classList.toggle("side-hidden", hidden);
+  $("#side-toggle").addEventListener("click", () => {
+    const nowHidden = side.classList.toggle("side-hidden");
+    localStorage.setItem("marlin.side-hidden", nowHidden ? "1" : "0");
+  });
+}
+
+// ---- Message rows ----
 
 interface MessageRow {
   root: HTMLElement;
   text: HTMLElement;
   /** Raw accumulated markdown for assistant rows; "" for user rows. */
   raw: string;
+  userText: string;
 }
 
 function addUserRow(text: string): MessageRow {
@@ -114,9 +208,9 @@ function addUserRow(text: string): MessageRow {
   body.textContent = text;
   root.appendChild(body);
   messages.appendChild(root);
-  updateEmptyState();
+  updatePristine();
   scrollToBottom();
-  return { root, text: body, raw: "" };
+  return { root, text: body, raw: "", userText: text };
 }
 
 function addAssistantRow(): MessageRow {
@@ -126,9 +220,9 @@ function addAssistantRow(): MessageRow {
   body.className = "msg-text markdown";
   root.appendChild(body);
   messages.appendChild(root);
-  updateEmptyState();
+  updatePristine();
   scrollToBottom();
-  return { root, text: body, raw: "" };
+  return { root, text: body, raw: "", userText: "" };
 }
 
 /** Re-renders an assistant row's accumulated markdown (per streaming chunk). */
@@ -137,21 +231,28 @@ function appendMarkdown(row: MessageRow, delta: string) {
   row.text.innerHTML = renderMarkdown(row.raw);
 }
 
-/** Hover action: copy the assistant's full text (rendered or partial). */
-function addCopyAction(row: MessageRow) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "copy-btn";
-  btn.textContent = "复制";
-  btn.addEventListener("click", async () => {
-    const text = row.raw || row.text.textContent || "";
-    await navigator.clipboard.writeText(text);
-    btn.textContent = "已复制";
-    setTimeout(() => (btn.textContent = "复制"), 1200);
-  });
+/** Hover actions under an assistant row: copy its text, retry the turn. */
+function addActions(row: MessageRow) {
   const actions = document.createElement("div");
   actions.className = "msg-actions";
-  actions.appendChild(btn);
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "action-btn";
+  copy.textContent = "复制";
+  copy.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(row.raw || row.text.textContent || "");
+    copy.textContent = "已复制";
+    setTimeout(() => (copy.textContent = "复制"), 1200);
+  });
+  actions.appendChild(copy);
+  if (row.userText) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "action-btn";
+    retry.textContent = "重试";
+    retry.addEventListener("click", () => void sendText(row.userText));
+    actions.appendChild(retry);
+  }
   row.root.appendChild(actions);
 }
 
@@ -177,7 +278,7 @@ function setError(row: HTMLElement, err: unknown) {
 }
 
 function scrollToBottom() {
-  messages.scrollTop = messages.scrollHeight;
+  thread.scrollTop = thread.scrollHeight;
 }
 
 function renderStoredTurn(row: StoredTurn) {
@@ -185,14 +286,18 @@ function renderStoredTurn(row: StoredTurn) {
   const assistant = addAssistantRow();
   if (row.assistantText) appendMarkdown(assistant, row.assistantText);
   if (row.outcome) setOutcome(assistant.root, row.outcome);
-  if (row.assistantText) addCopyAction(assistant);
+  if (row.assistantText) {
+    assistant.userText = row.userText;
+    addActions(assistant);
+  }
 }
 
 async function renderHistory() {
   const snap = await ChatService.state();
+  currentSessionId = snap.sessionId || currentSessionId;
   messages.replaceChildren();
-  updateEmptyState();
   for (const row of snap.history ?? []) renderStoredTurn(row);
+  updatePristine();
   scrollToBottom();
   if (snap.pendingText) await resumePending(snap.pendingText);
 }
@@ -205,29 +310,43 @@ async function resumePending(pendingText: string) {
   setComposer();
   addUserRow(pendingText);
   const assistant = addAssistantRow();
-  const note = document.createElement("div");
-  note.className = "pill";
-  note.textContent = "上次发送未确认，正在恢复…";
-  assistant.root.appendChild(note);
-  scrollToBottom();
+  const think = thinkingPill(assistant);
   try {
-    await streamInto(assistant, (ch) => ChatService.resume(ch));
-    note.remove();
-    addCopyAction(assistant);
+    await streamInto(assistant, (ch) => ChatService.resume(ch), () => think.remove());
+    addActions(assistant);
   } catch (err) {
+    think.remove();
     setError(assistant.root, err);
-    note.remove();
   } finally {
     busy = false;
     setComposer();
   }
 }
 
+/** The "thinking" indicator shown between admission and the first token. */
+function thinkingPill(row: MessageRow): HTMLElement {
+  const pill = document.createElement("div");
+  pill.className = "pill thinking";
+  pill.textContent = "正在思考…";
+  row.root.appendChild(pill);
+  scrollToBottom();
+  return pill;
+}
+
 // streamInto drives one channel to completion against a row.
-async function streamInto(assistant: MessageRow, start: (ch: Channel<TurnProgress>) => Promise<void>) {
+async function streamInto(
+  assistant: MessageRow,
+  start: (ch: Channel<TurnProgress>) => Promise<void>,
+  onFirst?: () => void,
+) {
   const ch = new Channel<TurnProgress>();
   const pendingPromise = start(ch);
+  let first = true;
   for await (const ev of ch) {
+    if (first) {
+      first = false;
+      onFirst?.();
+    }
     if (ev.kind === "text" && typeof ev.text === "string") {
       appendMarkdown(assistant, ev.text);
       scrollToBottom();
@@ -238,23 +357,22 @@ async function streamInto(assistant: MessageRow, start: (ch: Channel<TurnProgres
   await pendingPromise;
 }
 
-$("#composer").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (busy || !ready || !draft.value.trim()) return;
-  const text = draft.value;
-  draft.value = "";
-  autoGrow();
-
+async function sendText(text: string) {
+  if (busy || !ready || !text.trim()) return;
   busy = true;
   setComposer();
   addUserRow(text);
   const assistant = addAssistantRow();
+  const think = thinkingPill(assistant);
   scrollToBottom();
 
   try {
-    await streamInto(assistant, (ch) => ChatService.send(text, ch));
-    addCopyAction(assistant);
+    await streamInto(assistant, (ch) => ChatService.send(text, ch), () => think.remove());
+    assistant.userText = text;
+    addActions(assistant);
+    await refreshSessions(); // the new turn may have renamed the session
   } catch (err) {
+    think.remove();
     setError(assistant.root, err);
     draft.value = text; // the draft comes back: the host never admitted it
     autoGrow();
@@ -262,6 +380,15 @@ $("#composer").addEventListener("submit", async (e) => {
     busy = false;
     setComposer();
   }
+}
+
+$("#composer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (busy || !ready || !draft.value.trim()) return;
+  const text = draft.value;
+  draft.value = "";
+  autoGrow();
+  void sendText(text);
 });
 
 // Enter sends; Shift+Enter makes a newline (like the composer it mirrors).
@@ -283,6 +410,24 @@ stopBtn.addEventListener("click", () => {
     showBanner("error", `stop failed: ${err instanceof Error ? err.message : String(err)}`);
   });
 });
+
+// Per-code-block copy buttons (delegated: rows re-render while streaming).
+messages.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest(".code-copy");
+  if (!btn) return;
+  const code = btn.closest(".codeblock")?.querySelector("code");
+  if (!code) return;
+  void navigator.clipboard.writeText(code.textContent ?? "").then(() => {
+    btn.textContent = "已复制";
+    setTimeout(() => (btn.textContent = "复制"), 1200);
+  });
+});
+
+// ---- Empty-state idea prompts ----
+
+for (const idea of document.querySelectorAll<HTMLButtonElement>(".idea")) {
+  idea.addEventListener("click", () => void sendText(idea.dataset.text ?? ""));
+}
 
 // ---- Settings modal ----
 
@@ -368,8 +513,9 @@ $("#settings-apply").addEventListener("click", () => {
 
 // Startup: render the persisted projection, then let the snapshot decide
 // whether a pending submission needs resuming.
-const snap = await ChatService.state();
-await Promise.all([renderHistory(), refreshChips()]);
-if (snap.ready) showBanner("ready");
-else showBanner("starting", "waiting for the Marlin host…");
+{
+  const snap = await refreshAll();
+  if (snap.ready) showBanner("ready");
+  else showBanner("starting", "waiting for the Marlin host…");
+}
 setComposer();

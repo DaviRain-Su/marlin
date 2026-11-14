@@ -6,6 +6,9 @@
 // Session semantics mirror the upstream contract (design doc §6.3/§6.4):
 // submission-id idempotency, stale-ordinal refusal, exclusive active turn,
 // journal events with opaque IDs, and cancellation racing completion.
+// Like the real host's session_lookup, any non-empty Session ID resolves to
+// per-session state on first use; sessions are isolated (turns, watermark,
+// active turn per session).
 package fakehost
 
 import (
@@ -113,23 +116,41 @@ func (t *turnState) waitChan() chan struct{} {
 	return t.notify
 }
 
-// Host is a minimal AppServer implementation with in-memory journal.
+// sessionState is one Session's in-memory journal: its turns, watermark and
+// active turn. One host serves many sessions; state never crosses sessions.
+type sessionState struct {
+	id         string
+	turns      map[uint64]*turnState
+	bySubmit   map[string]uint64
+	latest     uint64
+	activeTurn uint64
+}
+
+func newSessionState(id string) *sessionState {
+	return &sessionState{
+		id:       id,
+		turns:    map[uint64]*turnState{},
+		bySubmit: map[string]uint64{},
+	}
+}
+
+// Host is a minimal AppServer implementation with in-memory journals.
 // StreamTurn (the stateless model stream) stays Unimplemented: the GUI path
 // uses the Session RPCs (design doc §2).
 type Host struct {
 	appv1.UnimplementedAppServerServer
 
-	gateway    ChatGateway
-	mu          sync.Mutex
-	sessionID   string
-	maxReq      uint32
-	maxMsg      uint32
-	maxOut      uint32
-	turns       map[uint64]*turnState
-	bySubmit    map[string]uint64
-	latest      uint64
-	activeTurn  uint64
-	slow        time.Duration // pacing between text chunks; 0 = instant
+	gateway ChatGateway
+	mu      sync.Mutex
+	// defaultID is the Session reported by GetCapabilities; the sentinel
+	// "bound" host of the single-binding days. RPCs accept any Session ID
+	// and resolve per-session state on demand.
+	defaultID string
+	maxReq    uint32
+	maxMsg    uint32
+	maxOut    uint32
+	sessions  map[string]*sessionState
+	slow      time.Duration // pacing between text chunks; 0 = instant
 }
 
 // New builds a host reporting the given Session binding and limits.
@@ -138,9 +159,9 @@ type Host struct {
 func New(sessionID string) *Host {
 	return &Host{
 		gateway:   EchoGateway{},
-		sessionID: sessionID,
+		defaultID: sessionID,
 		maxReq:    256 * 1024, maxMsg: 128, maxOut: 1024 * 1024,
-		turns: map[uint64]*turnState{}, bySubmit: map[string]uint64{},
+		sessions: map[string]*sessionState{},
 	}
 }
 
@@ -160,16 +181,30 @@ func (h *Host) Probe(userText string, onText func(string)) error {
 	})
 }
 
-// SetSession binds (or rebinds) the Session ID.
+// SetSession binds (or rebinds) the Session ID reported by capabilities.
 func (h *Host) SetSession(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.sessionID = id
+	h.defaultID = id
 }
 
 // SetSlow paces turn execution: one text chunk every d. For cancel/reconnect
 // tests. Zero (default) commits the whole turn instantly.
 func (h *Host) SetSlow(d time.Duration) { h.slow = d }
+
+// sessionOf resolves (or creates, mirroring the real host's on-demand
+// session_lookup) the state for a non-empty Session ID. Caller holds h.mu.
+func (h *Host) sessionOf(id string) (*sessionState, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, statusError(codes.InvalidArgument, "session id is required")
+	}
+	s, ok := h.sessions[id]
+	if !ok {
+		s = newSessionState(id)
+		h.sessions[id] = s
+	}
+	return s, nil
+}
 
 // GetCapabilities implements the handshake RPC.
 func (h *Host) GetCapabilities(ctx context.Context, req *appv1.GetCapabilitiesRequest) (*appv1.GetCapabilitiesResponse, error) {
@@ -180,8 +215,8 @@ func (h *Host) GetCapabilities(ctx context.Context, req *appv1.GetCapabilitiesRe
 		MaxMessages:        h.maxMsg,
 		MaxOutputTextBytes: h.maxOut,
 	}
-	if h.sessionID != "" {
-		resp.SessionId = &h.sessionID
+	if h.defaultID != "" {
+		resp.SessionId = &h.defaultID
 	}
 	return resp, nil
 }
@@ -196,33 +231,34 @@ func (h *Host) StartSessionTurn(ctx context.Context, req *appv1.StartSessionTurn
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if req.GetSessionId() != h.sessionID {
-		return nil, statusError(codes.InvalidArgument, "unknown session")
+	s, err := h.sessionOf(req.GetSessionId())
+	if err != nil {
+		return nil, err
 	}
-	if h.activeTurn != 0 {
+	if s.activeTurn != 0 {
 		return nil, statusError(codes.FailedPrecondition, "session busy: active turn")
 	}
-	if ord, ok := h.bySubmit[req.GetSubmissionId()]; ok {
-		t := h.turns[ord]
+	if ord, ok := s.bySubmit[req.GetSubmissionId()]; ok {
+		t := s.turns[ord]
 		if t.inputText == req.GetUserText() && t.afterTurn == req.GetAfterTurn() {
-			return &appv1.StartSessionTurnResponse{Turn: turnRef(h.sessionID, ord)}, nil
+			return &appv1.StartSessionTurnResponse{Turn: turnRef(s.id, ord)}, nil
 		}
 		return nil, statusError(codes.AlreadyExists, "submission id reused with different input")
 	}
-	if req.GetAfterTurn() != h.latest {
+	if req.GetAfterTurn() != s.latest {
 		return nil, statusError(codes.FailedPrecondition, "stale after_turn")
 	}
 
-	ordinal := h.latest + 1
-	t := newTurn(h.sessionID, ordinal, req.GetSubmissionId(), req.GetUserText(), req.GetAfterTurn())
+	ordinal := s.latest + 1
+	t := newTurn(s.id, ordinal, req.GetSubmissionId(), req.GetUserText(), req.GetAfterTurn())
 	t.active = true
-	h.turns[ordinal] = t
-	h.bySubmit[req.GetSubmissionId()] = ordinal
-	h.latest = ordinal
-	h.activeTurn = ordinal
+	s.turns[ordinal] = t
+	s.bySubmit[req.GetSubmissionId()] = ordinal
+	s.latest = ordinal
+	s.activeTurn = ordinal
 
-	go h.execute(t)
-	return &appv1.StartSessionTurnResponse{Turn: turnRef(h.sessionID, ordinal)}, nil
+	go h.execute(s, t)
+	return &appv1.StartSessionTurnResponse{Turn: turnRef(s.id, ordinal)}, nil
 }
 
 // WatchSessionTurn streams the turn's committed suffix from the exclusive
@@ -333,11 +369,15 @@ func (h *Host) GetSessionSummary(ctx context.Context, req *appv1.GetSessionSumma
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	resp := &appv1.GetSessionSummaryResponse{RecoveryState: appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_EMPTY}
-	if h.latest == 0 {
+	s, err := h.sessionOf(req.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	if s.latest == 0 {
 		return resp, nil
 	}
-	resp.LatestTurn = turnRef(h.sessionID, h.latest)
-	if h.activeTurn == h.latest {
+	resp.LatestTurn = turnRef(s.id, s.latest)
+	if s.activeTurn == s.latest {
 		resp.RecoveryState = appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_ACTIVE
 	} else {
 		resp.RecoveryState = appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_FINISHED
@@ -349,7 +389,7 @@ func (h *Host) GetSessionSummary(ctx context.Context, req *appv1.GetSessionSumma
 // checkpoints, then the committed outcome. Cancellation drops the in-flight
 // provider stream (REMOTE_UNCERTAIN); a gateway failure with zero committed
 // text commits a pre-dispatch refusal.
-func (h *Host) execute(t *turnState) {
+func (h *Host) execute(s *sessionState, t *turnState) {
 	defer t.cancelFn() // release gateway resources at turn retirement
 	t.append(&appv1.SessionTurnEvent{EventId: t.nextID(), Event: &appv1.SessionTurnEvent_Started{Started: &appv1.TurnStarted{}}})
 
@@ -358,7 +398,7 @@ func (h *Host) execute(t *turnState) {
 		gateway = EchoGateway{}
 	}
 	chunks := 0
-	err := gateway.StreamTurn(t.ctx, h.historyFor(t.ordinal), func(chunk string) error {
+	err := gateway.StreamTurn(t.ctx, h.historyFor(s, t.ordinal), func(chunk string) error {
 		if t.isCanceled() {
 			return errTurnCanceled
 		}
@@ -394,8 +434,8 @@ func (h *Host) execute(t *turnState) {
 	t.mu.Unlock()
 
 	h.mu.Lock()
-	if h.activeTurn == t.ordinal {
-		h.activeTurn = 0
+	if s.activeTurn == t.ordinal {
+		s.activeTurn = 0
 	}
 	h.mu.Unlock()
 }
@@ -413,22 +453,23 @@ func (h *Host) turnOf(ref *appv1.SessionTurnRef) *turnState {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if ref.SessionId != h.sessionID {
+	s, ok := h.sessions[ref.GetSessionId()]
+	if !ok {
 		return nil
 	}
-	return h.turns[ref.Ordinal]
+	return s.turns[ref.Ordinal]
 }
 
-// historyFor assembles the model conversation from the journal: every
-// committed turn up to and including the running one, user text followed by
-// the assistant's committed text (route/provider credentials stay host-side,
-// design doc §1).
-func (h *Host) historyFor(ordinal uint64) []ChatMessage {
+// historyFor assembles the model conversation from the Session's journal:
+// every committed turn up to and including the running one, user text
+// followed by the assistant's committed text (route/provider credentials
+// stay host-side, design doc §1).
+func (h *Host) historyFor(s *sessionState, ordinal uint64) []ChatMessage {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	var out []ChatMessage
 	for i := uint64(1); i <= ordinal; i++ {
-		t := h.turns[i]
+		t := s.turns[i]
 		if t == nil {
 			continue
 		}

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.17",
+    "highlight.js": "^11.12.0",
     "marked": "^18.2.0",
     "mygo-runtime": "^0.9.0"
   },

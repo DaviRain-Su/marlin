@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -33,42 +34,54 @@ type storeData struct {
 }
 
 // Store persists the applied projection plus cursor atomically (write to a
-// temp file, rename over the target). Missing or corrupted files start
-// empty; the journal on the host remains the source of truth.
+// temp file, rename over the target). Each Session owns a projection file
+// (sessions/<id>.json under the store directory); missing or corrupted
+// files start empty — the journal on the host remains the source of truth.
 type Store struct {
-	path string
+	dir  string
 	mu   sync.Mutex
 	data storeData
 }
 
-// LoadStore reads the projection file; a missing or unreadable file yields
-// an empty store (never an error — the GUI must always open).
-func LoadStore(path string) *Store {
-	s := &Store{path: path}
-	if b, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(b, &s.data) // malformed JSON: data stays zero
+// LoadStore prepares the store directory; a legacy single-file projection
+// (session.json) migrates into its per-session file on first load.
+func LoadStore(dir string) *Store {
+	s := &Store{dir: dir}
+	legacy := filepath.Join(dir, "session.json")
+	if b, err := os.ReadFile(legacy); err == nil {
+		var old storeData
+		if json.Unmarshal(b, &old) == nil && old.SessionID != "" {
+			if _, err := os.Stat(s.sessionPath(old.SessionID)); os.IsNotExist(err) {
+				_ = os.MkdirAll(filepath.Join(dir, "sessions"), 0o700)
+				_ = os.WriteFile(s.sessionPath(old.SessionID), b, 0o600)
+			}
+		}
 	}
 	return s
 }
 
-// SessionID returns the persisted Session binding (empty before first save).
+func (s *Store) sessionPath(id string) string {
+	return filepath.Join(s.dir, "sessions", id+".json")
+}
+
+// SessionID returns the Session bound in memory (the one being viewed).
 func (s *Store) SessionID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.data.SessionID
 }
 
-// BindSession stores the Session ID; a DIFFERENT ID clears the projection
-// (transcripts of another Session must not leak into this view).
+// BindSession switches the viewed Session: the current projection is already
+// persisted, and the target's file (or an empty view) loads in its place.
 func (s *Store) BindSession(id string) error {
 	s.mu.Lock()
-	if s.data.SessionID == id {
-		s.mu.Unlock()
-		return nil
+	defer s.mu.Unlock()
+	data := storeData{SessionID: id}
+	if b, err := os.ReadFile(s.sessionPath(id)); err == nil {
+		_ = json.Unmarshal(b, &data) // malformed JSON: the view starts empty
 	}
-	s.data = storeData{SessionID: id}
-	s.mu.Unlock()
-	return s.Save()
+	s.data = data
+	return nil
 }
 
 // Turns returns a copy of the projection.
@@ -138,11 +151,18 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return fmt.Errorf("store: marshal: %w", err)
 	}
-	tmp := s.path + ".tmp"
+	if s.data.SessionID == "" {
+		return fmt.Errorf("store: no session bound")
+	}
+	if err := os.MkdirAll(filepath.Join(s.dir, "sessions"), 0o700); err != nil {
+		return fmt.Errorf("store: mkdir: %w", err)
+	}
+	path := s.sessionPath(s.data.SessionID)
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return fmt.Errorf("store: write: %w", err)
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("store: rename: %w", err)
 	}
 	return nil

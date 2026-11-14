@@ -64,17 +64,95 @@ var Status = mygo.NewEvent[ConnState]("status")
 // ChatService is bound to the frontend: ChatService.send / stop / state /
 // resume in the generated client.
 type ChatService struct {
-	store *Store
+	store    *Store
+	registry *SessionRegistry
 
 	mu     sync.Mutex
 	mgr    *client.SessionManager
 	active *client.TurnRef
 }
 
-// NewChatService builds the bound service over the projection store;
-// setManager installs the session manager once the sidecar host is ready.
-func NewChatService(store *Store) *ChatService {
-	return &ChatService{store: store}
+// NewChatService builds the bound service over the projection store and
+// session registry; setManager installs the session manager once the
+// sidecar host is ready.
+func NewChatService(store *Store, registry *SessionRegistry) *ChatService {
+	return &ChatService{store: store, registry: registry}
+}
+
+// SessionID returns the session the service is currently bound to.
+func (c *ChatService) SessionID() string {
+	if id := c.store.SessionID(); id != "" {
+		return id
+	}
+	return c.registry.Current()
+}
+
+// busy reports whether a turn is being followed right now. Session switching
+// is refused while busy: the following goroutine persists into the bound
+// store, and a switch mid-turn would leak rows across sessions.
+func (c *ChatService) busy() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.active != nil
+}
+
+// Sessions returns the conversation list for the sidebar.
+func (c *ChatService) Sessions() ([]SessionMeta, error) {
+	return c.registry.List(), nil
+}
+
+// NewSession mints and opens a fresh conversation.
+func (c *ChatService) NewSession() (SessionMeta, error) {
+	if c.busy() {
+		return SessionMeta{}, fmt.Errorf("a turn is still running; wait for it to finish")
+	}
+	meta, err := c.registry.NewSession()
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	if err := c.store.BindSession(meta.ID); err != nil {
+		return SessionMeta{}, err
+	}
+	c.rebindManager(meta.ID)
+	return meta, nil
+}
+
+// SwitchSession opens another conversation from the list.
+func (c *ChatService) SwitchSession(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("empty session id")
+	}
+	if c.busy() {
+		return fmt.Errorf("a turn is still running; wait for it to finish")
+	}
+	if err := c.registry.SetCurrent(id); err != nil {
+		return err
+	}
+	if err := c.store.BindSession(id); err != nil {
+		return err
+	}
+	c.rebindManager(id)
+	return nil
+}
+
+// rebindManager points the session manager at another Session over the same
+// connection. The watermark starts fresh and re-syncs from the journal —
+// exactly what a host restart does (design §6.3). No-op before the host is
+// ready; Connect rebinds on its own.
+func (c *ChatService) rebindManager(id string) {
+	c.mu.Lock()
+	m := c.mgr
+	c.mu.Unlock()
+	if m == nil {
+		return
+	}
+	nm := m.WithSession(id)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := nm.SyncFromSummary(ctx); err != nil {
+		slog.Warn("summary sync after switch failed", "err", err)
+	}
+	c.setManager(nm)
 }
 
 // setManager installs (or clears, with nil) the session manager. Unexported:
@@ -139,6 +217,7 @@ func (c *ChatService) streamTurn(ctx context.Context, m *client.SessionManager, 
 	if err != nil {
 		return err // pending record persists; the page keeps the draft
 	}
+	c.registry.Touch(m.SessionID(), text) // first user text becomes the title
 	if err := c.store.ClearPending(); err != nil {
 		slog.Warn("pending clear failed", "err", err)
 	}
