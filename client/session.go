@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -41,12 +43,12 @@ type Summary struct {
 // CancelReceipt projects the RuntimeShutdownReceipt plus committed outcome
 // (design §6.5).
 type CancelReceipt struct {
-	Completed            bool
+	Completed             bool
 	CancellationRequested bool
-	RemainingTasks       uint64
-	TimedOut             bool // RUNTIME_RETIREMENT_STATUS_TIMED_OUT
-	Status               appv1.RuntimeRetirementStatus
-	Outcome              appv1.SessionTurnOutcome
+	RemainingTasks        uint64
+	TimedOut              bool // RUNTIME_RETIREMENT_STATUS_TIMED_OUT
+	Status                appv1.RuntimeRetirementStatus
+	Outcome               appv1.SessionTurnOutcome
 }
 
 // SessionManager owns Session semantics over one connection: submission
@@ -56,7 +58,7 @@ type SessionManager struct {
 	conn      *Conn
 	sessionID string
 
-	mu      sync.Mutex
+	mu        sync.Mutex
 	afterTurn uint64
 	// records binds each submission to its ORIGINAL text and after_turn,
 	// permanently while the manager lives: a retry of a committed send
@@ -219,6 +221,12 @@ func (m *SessionManager) Follow(ctx context.Context, turn TurnRef, ch chan<- Ses
 		for {
 			ev, err := stream.Recv()
 			if err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if err := recoverOrReturn(ctx, classify(err, "WatchSessionTurn"), &backoff); err != nil {
+					return err
+				}
 				break
 			}
 			if seen[ev.GetEventId()] {
@@ -242,9 +250,6 @@ func (m *SessionManager) Follow(ctx context.Context, turn TurnRef, ch chan<- Ses
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err := recoverOrReturn(ctx, classify(err, "WatchSessionTurn"), &backoff); err != nil {
-			return err
-		}
 	}
 }
 
@@ -254,6 +259,9 @@ func recoverOrReturn(ctx context.Context, err error, backoff *time.Duration) err
 		return nil
 	}
 	kind, _ := AsErrKind(err)
+	if errors.Is(err, io.EOF) {
+		kind = ErrCorruptStream
+	}
 	switch kind {
 	case ErrHostUnavailable, ErrCorruptStream:
 		select {
@@ -281,12 +289,12 @@ func (m *SessionManager) Cancel(ctx context.Context, turn TurnRef) (CancelReceip
 	}
 	r := resp.GetRuntime()
 	return CancelReceipt{
-		Completed:            r.GetCompleted(),
+		Completed:             r.GetCompleted(),
 		CancellationRequested: r.GetCancellationRequested(),
-		RemainingTasks:       r.GetRemainingTasks(),
-		TimedOut:             r.GetStatus() == appv1.RuntimeRetirementStatus_RUNTIME_RETIREMENT_STATUS_TIMED_OUT,
-		Status:               r.GetStatus(),
-		Outcome:              resp.GetOutcome(),
+		RemainingTasks:        r.GetRemainingTasks(),
+		TimedOut:              r.GetStatus() == appv1.RuntimeRetirementStatus_RUNTIME_RETIREMENT_STATUS_TIMED_OUT,
+		Status:                r.GetStatus(),
+		Outcome:               resp.GetOutcome(),
 	}, nil
 }
 
@@ -304,12 +312,12 @@ func (m *SessionManager) CancellationEvidence(ctx context.Context, turn TurnRef)
 	case *appv1.GetSessionTurnCancellationResponse_Recorded:
 		r := ev.Recorded
 		return CancelReceipt{
-			Completed:            r.GetCompleted(),
+			Completed:             r.GetCompleted(),
 			CancellationRequested: r.GetCancellationRequested(),
-			RemainingTasks:       r.GetRemainingTasks(),
-			TimedOut:             r.GetStatus() == appv1.RuntimeRetirementStatus_RUNTIME_RETIREMENT_STATUS_TIMED_OUT,
-			Status:               r.GetStatus(),
-			Outcome:              resp.GetOutcome(),
+			RemainingTasks:        r.GetRemainingTasks(),
+			TimedOut:              r.GetStatus() == appv1.RuntimeRetirementStatus_RUNTIME_RETIREMENT_STATUS_TIMED_OUT,
+			Status:                r.GetStatus(),
+			Outcome:               resp.GetOutcome(),
 		}, true, nil
 	default:
 		return CancelReceipt{Outcome: resp.GetOutcome()}, false, nil

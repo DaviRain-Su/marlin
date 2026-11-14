@@ -41,6 +41,9 @@ type HostConfig struct {
 // DefaultConfigPath is the user-level config location:
 // <UserConfigDir>/marlin-desktop/app-sidecar.toml.
 func DefaultConfigPath() (string, error) {
+	if dir := os.Getenv("MARLIN_DATA_DIR"); dir != "" {
+		return filepath.Join(dir, "app-sidecar.toml"), nil
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err

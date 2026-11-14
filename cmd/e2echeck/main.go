@@ -23,6 +23,7 @@ func main() {
 	text := flag.String("text", "你好，请用一句话介绍你自己", "user text")
 	timeout := flag.Duration("timeout", 60*time.Second, "turn deadline")
 	cancelAfter := flag.Duration("cancel-after", 0, "request cancellation this long after admission (0 = never)")
+	verbose := flag.Bool("v", false, "print each text checkpoint with its arrival time")
 	summaryOnly := flag.Bool("summary", false, "print the session summary and exit")
 	flag.Parse()
 	if *addr == "" || *token == "" {
@@ -82,16 +83,21 @@ func main() {
 	events := make(chan client.SessionEvent, 64)
 	followCtx, followCancel := context.WithCancel(ctx)
 	defer followCancel()
-	go func() { _ = m.Follow(followCtx, turn, events) }()
+	followErr := make(chan error, 1)
+	go func() { followErr <- m.Follow(followCtx, turn, events) }()
 
+	start := time.Now()
 	out := make([]byte, 0, 4096)
 	for {
 		select {
 		case ev := <-events:
 			switch ev.Kind {
 			case client.EventStarted:
-				fmt.Println("event: started")
+				fmt.Printf("[%6.2fs] event: started\n", time.Since(start).Seconds())
 			case client.EventText:
+				if *verbose {
+					fmt.Printf("[%6.2fs] text +%d bytes\n", time.Since(start).Seconds(), len(ev.Text))
+				}
 				out = append(out, ev.Text...)
 			case client.EventOutcome:
 				fmt.Printf("event: outcome=%s\n", ev.Outcome)
@@ -100,6 +106,11 @@ func main() {
 			}
 		case <-ctx.Done():
 			log.Fatalf("deadline: partial text %q", out)
+		case err := <-followErr:
+			if err != nil {
+				log.Fatalf("watch: %v", err)
+			}
+			followErr = nil // terminal outcome is already buffered in events
 		}
 	}
 }

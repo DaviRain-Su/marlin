@@ -131,6 +131,91 @@ body {
 .session-item:hover { background: var(--code-bg); }
 .session-item.active { background: var(--code-head); font-weight: 500; }
 
+.session-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.session-row.active { background: var(--code-head); }
+.session-row .session-item { flex: 1; min-width: 0; }
+
+.session-del {
+  font: inherit;
+  font-size: 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  border-radius: 6px;
+  opacity: 0;
+  flex: none;
+}
+
+.session-row:hover .session-del { opacity: 1; }
+.session-del:hover { color: var(--danger); background: var(--code-bg); }
+
+.session-title.rename {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 0.15rem 0.5rem;
+  width: min(360px, 50%);
+}
+
+.queue-note {
+  font-size: 0.75rem;
+  color: var(--warn);
+  padding: 0.1rem 0.2rem;
+}
+
+#queue-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#queue-actions button {
+  font: inherit;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.45rem;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.unresolved-bar {
+  margin: 0 auto;
+  width: min(760px, calc(100% - 2rem));
+  padding: 0.5rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, var(--card));
+  color: var(--fg);
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex: none;
+}
+
+.unresolved-bar button {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  flex: none;
+}
+
+.unresolved-bar button:hover { background: var(--accent-hover); }
+
 .side-card {
   background: var(--card);
   border: 1px solid var(--border);

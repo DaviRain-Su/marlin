@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/egoist/mygo"
 
@@ -13,6 +15,10 @@ import (
 // storeDir is the directory holding the session registry and the
 // per-session projection files: <config>/marlin-desktop.
 func storeDir() string {
+	if dir := os.Getenv("MARLIN_DATA_DIR"); dir != "" {
+		_ = os.MkdirAll(dir, 0o700)
+		return dir
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = os.TempDir()
@@ -25,6 +31,9 @@ func storeDir() string {
 // configPath is the host config the settings UI edits:
 // <config>/marlin-desktop/app-sidecar.toml.
 func configPath() string {
+	if dir := os.Getenv("MARLIN_DATA_DIR"); dir != "" {
+		return filepath.Join(dir, "app-sidecar.toml")
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = os.TempDir()
@@ -33,6 +42,15 @@ func configPath() string {
 }
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var host sync.WaitGroup
+	// OnQuit runs after the UI event loop stops and must finish cleanup
+	// synchronously. Cancellation stops the supervisor before its host.
+	mygo.App.OnQuit(func() {
+		cancel()
+		host.Wait()
+	})
 	registry := app.LoadSessionRegistry(filepath.Join(storeDir(), "registry.json"))
 	chat := app.NewChatService(app.LoadStore(storeDir()), registry)
 	mygo.Bind(chat)
@@ -54,7 +72,11 @@ func main() {
 		})
 		// The sidecar host lives for the app's lifetime; its journal keeps
 		// turns alive across its own restarts.
-		go app.Connect(chat, win)
+		host.Add(1)
+		go func() {
+			defer host.Done()
+			app.Connect(ctx, chat, win)
+		}()
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)

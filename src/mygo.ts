@@ -74,6 +74,8 @@ export interface Snapshot {
   activeOrdinal?: string;
   history?: StoredTurn[];
   pendingText?: string;
+  recoveryState?: string;
+  parentSessionId?: string;
 }
 
 /**
@@ -98,6 +100,7 @@ export interface StoredTurn {
  */
 export interface TurnProgress {
   eventId: string;
+  sessionId?: string;
   /** Kind: "started" | "text" | "outcome". */
   kind: string;
   text?: string;
@@ -113,9 +116,24 @@ export interface TurnProgress {
  * resume in the generated client.
  */
 export const ChatService = {
+  /**
+   * ContinueSession opens a new journal carrying the known transcript. A remote
+   * uncertain outcome remains uncertain; it is never rewritten as completed.
+   */
+  continueSession(): Promise<SessionMeta> {
+    return call("ChatService.ContinueSession");
+  },
+  /** DeleteSession drops a conversation from the list after its projection. */
+  deleteSession(id: string): Promise<void> {
+    return call("ChatService.DeleteSession", id);
+  },
   /** NewSession mints and opens a fresh conversation. */
   newSession(): Promise<SessionMeta> {
     return call("ChatService.NewSession");
+  },
+  /** RenameSession sets a conversation's display title. */
+  renameSession(id: string, title: string): Promise<void> {
+    return call("ChatService.RenameSession", id, title);
   },
   /**
    * Resume re-admits the pending submission after a restart: the SAME id,

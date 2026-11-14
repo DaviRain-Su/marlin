@@ -16,8 +16,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use marlin_agent_protocol::{
     ModelGatewayCompletionChoice, ModelGatewayCompletionOptions, ModelGatewayCompletionResponse,
     ModelGatewayError, ModelGatewayFuture, ModelGatewayMessage, ModelGatewayMessageRole,
-    ModelGatewayRequest, ModelGatewayResult, ModelToolCall, ModelToolName,
-    tool_gateway_message,
+    ModelGatewayRequest, ModelGatewayResult, ModelToolCall, ModelToolName, tool_gateway_message,
 };
 use marlin_agent_runtime::{
     ModelToolDeclaration, ModelToolOutcome, RuntimeContext, ShellToolDeclarationRequest,
@@ -42,8 +41,7 @@ impl ToolSurface {
         workspace: PathBuf,
         allow: Vec<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let name = ModelToolName::new("run_command")
-            .map_err(|e| format!("tool name: {e}"))?;
+        let name = ModelToolName::new("run_command").map_err(|e| format!("tool name: {e}"))?;
         let declaration = ModelToolDeclaration::shell(ShellToolDeclarationRequest {
             name,
             description: "Run one shell command inside the workspace and return its output."
@@ -92,7 +90,12 @@ impl ToolLoopGateway {
         context: RuntimeContext,
         max_rounds: usize,
     ) -> Self {
-        Self { inner, surface, context, max_rounds }
+        Self {
+            inner,
+            surface,
+            context,
+            max_rounds,
+        }
     }
 }
 
@@ -103,23 +106,33 @@ impl ModelStreamingGateway for ToolLoopGateway {
     ) -> ModelGatewayFuture<ModelGatewayResult<ModelGatewayEventStream>> {
         let inner = self.inner.clone();
         let surface = self.surface.clone();
-        let context = self.context.clone();
+        let context = self.context.child_context();
         let max_rounds = self.max_rounds;
         Box::pin(async move {
-            let (tx, rx) = tokio::sync::mpsc::channel::<ModelGatewayResult<ModelStreamEvent>>(64);
-            // The turn streams from its own task; when it finishes (or the
-            // consumer hangs up and the loop notices a closed channel), the
-            // senders drop and the receiver ends.
-            tokio::spawn(run_turn(
-                inner,
-                surface,
-                context,
-                max_rounds,
-                request,
-                tx,
-            ));
-            Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx))
-                as ModelGatewayEventStream)
+            let (tx, mut rx) =
+                tokio::sync::mpsc::channel::<ModelGatewayResult<ModelStreamEvent>>(64);
+            // Drive the loop from the consumer's stream. Dropping it on Stop
+            // drops provider I/O and managed shell processes immediately,
+            // instead of leaving a detached task running until its next send.
+            let output = async_stream::stream! {
+                let work = run_turn(inner, surface, context, max_rounds, request, tx);
+                tokio::pin!(work);
+                loop {
+                    tokio::select! {
+                        item = rx.recv() => match item {
+                            Some(item) => yield item,
+                            None => break,
+                        },
+                        () = &mut work => {
+                            while let Some(item) = rx.recv().await {
+                                yield item;
+                            }
+                            break;
+                        }
+                    }
+                }
+            };
+            Ok(Box::pin(output) as ModelGatewayEventStream)
         })
     }
 }
@@ -190,12 +203,15 @@ async fn run_turn(
                         .find(|choice| choice.message.role == ModelGatewayMessageRole::Assistant)
                         .map(|choice| choice.message.content.as_str())
                         .unwrap_or("");
-                    if content.len() > accumulated.len() && content.starts_with(accumulated.as_str())
+                    if content.len() > accumulated.len()
+                        && content.starts_with(accumulated.as_str())
                     {
                         let gap = content[accumulated.len()..].to_owned();
                         sequence += 1;
                         accumulated.push_str(&gap);
-                        send!(ModelStreamEvent::Chunk(ModelStreamChunk::new(sequence, gap)));
+                        send!(ModelStreamEvent::Chunk(ModelStreamChunk::new(
+                            sequence, gap
+                        )));
                     }
                     send!(synthesized(&accumulated));
                     return;
@@ -280,10 +296,17 @@ async fn evaluate(
     call: &ModelToolCall,
 ) -> ModelGatewayMessage {
     let outcome = if !surface.admitted(call) {
-        ModelToolOutcome::Failed(format!("tool {} is denied by the host policy", call.name.as_str()))
+        ModelToolOutcome::Failed(format!(
+            "tool {} is denied by the host policy",
+            call.name.as_str()
+        ))
     } else {
         match surface.handlers.get(call.name.as_str()) {
-            Some(handler) => handler.run_tool(call.clone(), context.child_context()).await,
+            Some(handler) => {
+                handler
+                    .run_tool(call.clone(), context.child_context())
+                    .await
+            }
             None => ModelToolOutcome::Failed(format!("no handler for tool {}", call.name.as_str())),
         }
     };
@@ -292,4 +315,62 @@ async fn evaluate(
         ModelToolOutcome::Failed(error) => format!("tool failed: {error}"),
     };
     tool_gateway_message(call.id.clone(), text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marlin_agent_protocol::{ModelEndpoint, ModelGatewayTransport};
+    use marlin_agent_runtime::{TokioAgentRuntime, TokioAgentRuntimeBuildRequest};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct PendingGateway(Arc<AtomicBool>);
+    struct Dropped(Arc<AtomicBool>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    impl ModelStreamingGateway for PendingGateway {
+        fn stream(
+            &self,
+            _: ModelGatewayRequest,
+        ) -> ModelGatewayFuture<ModelGatewayResult<ModelGatewayEventStream>> {
+            let flag = self.0.clone();
+            Box::pin(async move {
+                let source = async_stream::stream! {
+                    let _guard = Dropped(flag);
+                    yield Ok(ModelStreamEvent::Started { transport: ModelGatewayTransport::Sse });
+                    std::future::pending::<()>().await;
+                };
+                Ok(Box::pin(source) as ModelGatewayEventStream)
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn dropping_turn_drops_provider_without_waiting_for_another_token() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let (runtime, _events) =
+            TokioAgentRuntime::from_build_request(TokioAgentRuntimeBuildRequest::runtime_root(64));
+        let surface = Arc::new(ToolSurface::shell(std::env::temp_dir(), vec!["*".into()]).unwrap());
+        let gateway = ToolLoopGateway::new(
+            Arc::new(PendingGateway(dropped.clone())),
+            surface,
+            runtime.context(),
+            8,
+        );
+        let request = ModelGatewayRequest::new(
+            ModelEndpoint::new("test", "model"),
+            vec![plain_message(ModelGatewayMessageRole::User, "hi")],
+        );
+        let mut stream = gateway.stream(request).await.unwrap();
+        assert!(matches!(
+            stream.next().await,
+            Some(Ok(ModelStreamEvent::Started { .. }))
+        ));
+        assert!(!dropped.load(Ordering::SeqCst));
+        drop(stream);
+        assert!(dropped.load(Ordering::SeqCst));
+    }
 }

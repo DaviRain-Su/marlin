@@ -2010,6 +2010,7 @@ dependencies = [
 name = "marlin-host"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "marlin-agent-app-server",
  "marlin-agent-protocol",
  "marlin-agent-runtime",

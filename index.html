@@ -30,10 +30,14 @@
       <main>
         <div id="topbar">
           <button id="side-toggle" type="button" title="收起/展开侧栏">☰</button>
-          <div id="session-title" class="session-title">新对话</div>
+          <div id="session-title" class="session-title" title="点击重命名当前会话">新对话</div>
           <span class="spacer"></span>
         </div>
         <div id="banner" class="banner hidden"></div>
+        <div id="unresolved-bar" class="unresolved-bar hidden">
+          <span id="unresolved-text">上次回复已中断，远端结果未知。可以继续发送，已知历史会带入续接会话。</span>
+          <button id="unresolved-new" type="button" class="primary">携带历史继续</button>
+        </div>
         <div id="thread">
           <div id="messages" aria-live="polite"></div>
         </div>
@@ -56,6 +60,11 @@
         <div id="composer-wrap">
           <form id="composer">
             <div class="composer-card">
+              <div id="queue-note" class="queue-note hidden"></div>
+              <div id="queue-actions" class="hidden">
+                <button id="queue-resume" type="button">继续发送队列</button>
+                <button id="queue-clear" type="button">清空队列</button>
+              </div>
               <textarea id="draft" rows="1" placeholder="给 Marlin 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
               <div class="composer-actions">
                 <button type="button" id="composer-chip" class="chip">—</button>

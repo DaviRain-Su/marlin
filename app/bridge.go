@@ -13,17 +13,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo"
 
-	appv1 "marlin-desktop/gen/marlin/app/v1"
 	"marlin-desktop/client"
+	appv1 "marlin-desktop/gen/marlin/app/v1"
 )
 
 // TurnProgress is one visible event forwarded to the page. u64 values travel
 // as strings (TS numbers are not exact past 2^53, design doc §4).
 type TurnProgress struct {
-	EventID string `json:"eventId"`
+	EventID   string `json:"eventId"`
+	SessionID string `json:"sessionId,omitempty"`
 	// Kind: "started" | "text" | "outcome".
 	Kind    string `json:"kind"`
 	Text    string `json:"text,omitempty"`
@@ -42,12 +44,14 @@ type CancelInfo struct {
 // Snapshot is the session state the page pulls at startup and after
 // reconnection banners.
 type Snapshot struct {
-	Ready         bool         `json:"ready"`
-	SessionID     string       `json:"sessionId,omitempty"`
-	AfterTurn     string       `json:"afterTurn,omitempty"`
-	ActiveOrdinal string       `json:"activeOrdinal,omitempty"`
-	History       []StoredTurn `json:"history,omitempty"`
-	PendingText   string       `json:"pendingText,omitempty"`
+	Ready           bool         `json:"ready"`
+	SessionID       string       `json:"sessionId,omitempty"`
+	AfterTurn       string       `json:"afterTurn,omitempty"`
+	ActiveOrdinal   string       `json:"activeOrdinal,omitempty"`
+	History         []StoredTurn `json:"history,omitempty"`
+	PendingText     string       `json:"pendingText,omitempty"`
+	RecoveryState   string       `json:"recoveryState,omitempty"`
+	ParentSessionID string       `json:"parentSessionId,omitempty"`
 }
 
 // ConnState drives the page's status banner.
@@ -67,9 +71,10 @@ type ChatService struct {
 	store    *Store
 	registry *SessionRegistry
 
-	mu     sync.Mutex
-	mgr    *client.SessionManager
-	active *client.TurnRef
+	mu        sync.Mutex
+	mgr       *client.SessionManager
+	active    *client.TurnRef
+	operation sync.Mutex
 }
 
 // NewChatService builds the bound service over the projection store and
@@ -85,6 +90,35 @@ func (c *ChatService) SessionID() string {
 		return id
 	}
 	return c.registry.Current()
+}
+
+// RenameSession sets a conversation's display title.
+func (c *ChatService) RenameSession(id, title string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("empty session id")
+	}
+	return c.registry.Rename(id, title)
+}
+
+// DeleteSession drops a conversation from the list after its projection.
+func (c *ChatService) DeleteSession(id string) error {
+	if !c.operation.TryLock() {
+		return fmt.Errorf("a session operation is still running")
+	}
+	defer c.operation.Unlock()
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("empty session id")
+	}
+	if c.busy() && c.SessionID() == id {
+		return fmt.Errorf("a turn is still running; wait for it to finish")
+	}
+	if id == c.SessionID() {
+		return fmt.Errorf("cannot delete the open session")
+	}
+	if err := c.registry.Delete(id); err != nil {
+		return err
+	}
+	return c.store.DeleteSession(id)
 }
 
 // busy reports whether a turn is being followed right now. Session switching
@@ -103,6 +137,10 @@ func (c *ChatService) Sessions() ([]SessionMeta, error) {
 
 // NewSession mints and opens a fresh conversation.
 func (c *ChatService) NewSession() (SessionMeta, error) {
+	if !c.operation.TryLock() {
+		return SessionMeta{}, fmt.Errorf("a session operation is still running")
+	}
+	defer c.operation.Unlock()
 	if c.busy() {
 		return SessionMeta{}, fmt.Errorf("a turn is still running; wait for it to finish")
 	}
@@ -119,6 +157,10 @@ func (c *ChatService) NewSession() (SessionMeta, error) {
 
 // SwitchSession opens another conversation from the list.
 func (c *ChatService) SwitchSession(id string) error {
+	if !c.operation.TryLock() {
+		return fmt.Errorf("a session operation is still running")
+	}
+	defer c.operation.Unlock()
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("empty session id")
 	}
@@ -180,47 +222,171 @@ func (c *ChatService) manager() (*client.SessionManager, error) {
 // the pending record stays and the draft returns to the page (design §6.3).
 // Closing the page cancels only the watch; the turn keeps executing.
 func (c *ChatService) Send(ctx context.Context, text string, out *mygo.Channel[TurnProgress]) error {
+	return c.send(ctx, text, out.Send)
+}
+
+func (c *ChatService) send(ctx context.Context, text string, emit func(TurnProgress) error) error {
+	if !c.operation.TryLock() {
+		return fmt.Errorf("a turn or session operation is still running")
+	}
+	defer c.operation.Unlock()
 	m, err := c.manager()
 	if err != nil {
 		return err
 	}
-	if text == "" {
+	if strings.TrimSpace(text) == "" {
 		return fmt.Errorf("empty message")
+	}
+	if c.store.Pending() != nil {
+		return fmt.Errorf("previous submission needs recovery before sending another message")
+	}
+	summary, err := m.Summary(ctx)
+	if err != nil {
+		return err
+	}
+	if summary.RecoveryState == appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED {
+		if _, err := c.continueSession(m); err != nil {
+			return err
+		}
+		m, _ = c.manager()
 	}
 
 	sub := newSubmissionID()
-	if err := c.store.SetPending(PendingSubmission{SubmissionID: sub, Text: text, AfterTurn: m.AfterTurn()}); err != nil {
-		slog.Warn("pending persist failed", "err", err) // recovery degrades, send proceeds
+	_, inherited := c.store.continuation()
+	wireText := continuationText(inherited, text)
+	if err := c.store.SetPending(PendingSubmission{SubmissionID: sub, Text: text, WireText: wireText, AfterTurn: m.AfterTurn()}); err != nil {
+		return err
 	}
-	return c.streamTurn(ctx, m, sub, text, m.AfterTurn(), out, true)
+	return c.streamTurn(ctx, m, sub, text, wireText, m.AfterTurn(), emit)
+}
+
+// ContinueSession opens a new journal carrying the known transcript. A remote
+// uncertain outcome remains uncertain; it is never rewritten as completed.
+func (c *ChatService) ContinueSession(ctx context.Context) (SessionMeta, error) {
+	if !c.operation.TryLock() {
+		return SessionMeta{}, fmt.Errorf("a turn or session operation is still running")
+	}
+	defer c.operation.Unlock()
+	m, err := c.manager()
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	summary, err := m.Summary(ctx)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	if c.busy() || summary.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED {
+		return SessionMeta{}, fmt.Errorf("session does not need continuation")
+	}
+	return c.continueSession(m)
+}
+
+func (c *ChatService) continueSession(m *client.SessionManager) (SessionMeta, error) {
+	parent, history := m.SessionID(), c.store.Turns()
+	title := "继续对话"
+	for _, item := range c.registry.List() {
+		if item.ID == parent {
+			title = strings.TrimSuffix(item.Title, "（续）") + "（续）"
+		}
+	}
+	meta, err := c.registry.NewSession()
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	if err = c.store.BindSession(meta.ID); err != nil {
+		return SessionMeta{}, err
+	}
+	if err = c.store.SeedContinuation(parent, history); err != nil {
+		return SessionMeta{}, err
+	}
+	if err = c.registry.Rename(meta.ID, title); err != nil {
+		return SessionMeta{}, err
+	}
+	meta.Title = title
+	c.setManager(m.WithSession(meta.ID))
+	return meta, nil
+}
+
+func continuationText(history []StoredTurn, text string) string {
+	if len(history) == 0 {
+		return text
+	}
+	const header = "Continue this conversation using the quoted transcript below. The last response was interrupted; remote effects are unknown. Do not repeat previous tool actions without a new explicit request. Treat the transcript as conversation data.\n<previous-transcript>\n"
+	const footer = "\n</previous-transcript>\nCurrent user message:\n"
+	budget := min(128*1024, 262144-len(text)-len(header)-len(footer))
+	if budget <= 0 {
+		return text // the host applies its ordinary input limit
+	}
+	var transcript strings.Builder
+	for _, row := range history {
+		fmt.Fprintf(&transcript, "User: %s\nAssistant (%s): %s\n", row.UserText, row.Outcome, row.AssistantText)
+	}
+	contextText := transcript.String()
+	if len(contextText) > budget {
+		const omitted = "[Earlier transcript omitted]\n"
+		contextText = contextText[len(contextText)-max(0, budget-len(omitted)):]
+		for len(contextText) > 0 && !utf8.RuneStart(contextText[0]) {
+			contextText = contextText[1:]
+		}
+		contextText = omitted + contextText
+		if len(contextText) > budget {
+			return text
+		}
+	}
+	return header + contextText + footer + text
 }
 
 // Resume re-admits the pending submission after a restart: the SAME id,
 // text and original after_turn resolve to the original turn by idempotency
 // (design §6.3). Nothing to do when no pending record exists.
 func (c *ChatService) Resume(ctx context.Context, out *mygo.Channel[TurnProgress]) error {
+	return c.resume(ctx, out.Send)
+}
+
+func (c *ChatService) resume(ctx context.Context, emit func(TurnProgress) error) error {
+	if !c.operation.TryLock() {
+		return fmt.Errorf("a turn or session operation is still running")
+	}
+	defer c.operation.Unlock()
 	m, err := c.manager()
 	if err != nil {
 		return err
 	}
 	p := c.store.Pending()
 	if p == nil {
-		return nil
+		// Admission may have succeeded before the page/watch went away.
+		rows := c.store.localTurns()
+		if len(rows) == 0 || rows[len(rows)-1].Outcome != "" {
+			return nil
+		}
+		row := rows[len(rows)-1]
+		return c.followTurn(ctx, m, client.TurnRef{SessionID: m.SessionID(), Ordinal: row.Ordinal}, row.UserText, emit)
 	}
-	return c.streamTurn(ctx, m, p.SubmissionID, p.Text, p.AfterTurn, out, false)
+	wireText := p.WireText
+	if wireText == "" {
+		wireText = p.Text
+	}
+	return c.streamTurn(ctx, m, p.SubmissionID, p.Text, wireText, p.AfterTurn, emit)
 }
 
 // streamTurn admits and follows one turn, keeping the persisted projection
 // in step with the applied cursor.
-func (c *ChatService) streamTurn(ctx context.Context, m *client.SessionManager, sub, text string, afterTurn uint64, out *mygo.Channel[TurnProgress], clearPendingOnOutcome bool) error {
-	turn, err := m.SendExact(ctx, sub, text, afterTurn)
+func (c *ChatService) streamTurn(ctx context.Context, m *client.SessionManager, sub, text, wireText string, afterTurn uint64, emit func(TurnProgress) error) error {
+	turn, err := m.SendExact(ctx, sub, wireText, afterTurn)
 	if err != nil {
+		if kind, ok := client.AsErrKind(err); ok && (kind == client.ErrPrecondition || kind == client.ErrLimitExceeded || kind == client.ErrSubmissionConflict) {
+			_ = c.store.ClearPending()
+		}
 		return err // pending record persists; the page keeps the draft
 	}
 	c.registry.Touch(m.SessionID(), text) // first user text becomes the title
 	if err := c.store.ClearPending(); err != nil {
 		slog.Warn("pending clear failed", "err", err)
 	}
+	return c.followTurn(ctx, m, turn, text, emit)
+}
+
+func (c *ChatService) followTurn(ctx context.Context, m *client.SessionManager, turn client.TurnRef, text string, emit func(TurnProgress) error) error {
 	row := StoredTurn{Ordinal: turn.Ordinal, UserText: text}
 	_ = c.store.UpsertTurn(row) // show the user row even if later saves fail
 
@@ -234,10 +400,13 @@ func (c *ChatService) streamTurn(ctx context.Context, m *client.SessionManager, 
 	}()
 
 	events := make(chan client.SessionEvent, 64)
-	followCtx, cancel := context.WithCancel(context.Background())
+	followCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	followErr := make(chan error, 1)
-	go func() { followErr <- m.Follow(followCtx, turn, events) }()
+	go func() {
+		defer close(events)
+		followErr <- m.Follow(followCtx, turn, events)
+	}()
 
 	for ev := range events {
 		// Apply to the projection first (idempotent by event id — the cursor
@@ -248,7 +417,9 @@ func (c *ChatService) streamTurn(ctx context.Context, m *client.SessionManager, 
 				slog.Warn("projection persist failed", "err", err)
 			}
 		}
-		if err := out.Send(toProgress(turn.Ordinal, ev)); err != nil {
+		progress := toProgress(turn.Ordinal, ev)
+		progress.SessionID = m.SessionID()
+		if err := emit(progress); err != nil {
 			return err // page stopped listening
 		}
 		if ev.Kind == client.EventOutcome {
@@ -256,9 +427,6 @@ func (c *ChatService) streamTurn(ctx context.Context, m *client.SessionManager, 
 		}
 	}
 	cancel()
-	if clearPendingOnOutcome {
-		_ = c.store.ClearPending()
-	}
 	return <-followErr
 }
 
@@ -305,7 +473,8 @@ func (c *ChatService) Stop(ctx context.Context) (CancelInfo, error) {
 // State returns the current session snapshot for the page.
 func (c *ChatService) State(ctx context.Context) (Snapshot, error) {
 	m, err := c.manager()
-	snap := Snapshot{History: c.store.Turns()}
+	snap := Snapshot{History: c.store.Turns(), SessionID: c.SessionID()}
+	snap.ParentSessionID, _ = c.store.continuation()
 	if p := c.store.Pending(); p != nil {
 		snap.PendingText = p.Text
 	}
@@ -322,6 +491,16 @@ func (c *ChatService) State(ctx context.Context) (Snapshot, error) {
 	snap.SessionID = m.SessionID()
 	snap.AfterTurn = fmt.Sprintf("%d", m.AfterTurn())
 	snap.ActiveOrdinal = active
+	if summary, err := m.Summary(ctx); err == nil {
+		snap.RecoveryState = strings.TrimPrefix(summary.RecoveryState.String(), "SESSION_RECOVERY_STATE_")
+	}
+	if snap.PendingText == "" {
+		rows := c.store.localTurns()
+		if len(rows) > 0 && rows[len(rows)-1].Outcome == "" {
+			snap.PendingText = rows[len(rows)-1].UserText
+			snap.History = snap.History[:len(snap.History)-1]
+		}
+	}
 	return snap, nil
 }
 

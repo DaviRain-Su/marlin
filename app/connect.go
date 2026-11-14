@@ -10,7 +10,6 @@ import (
 
 	"github.com/egoist/mygo"
 
-	appv1 "marlin-desktop/gen/marlin/app/v1"
 	"marlin-desktop/client"
 	"marlin-desktop/sidecar"
 )
@@ -101,9 +100,11 @@ func hostProvider() string {
 // supervises the process for the app's lifetime. It runs on its own
 // goroutine and reports every transition through the Status event
 // (design doc §5.2–5.3).
-func Connect(chat *ChatService, win *mygo.Window) {
-	ctx := context.Background()
+func Connect(ctx context.Context, chat *ChatService, win *mygo.Window) {
 	emit := func(state ConnState) {
+		if ctx.Err() != nil {
+			return
+		}
 		if err := Status.Emit(win, state); err != nil {
 			slog.Info("status event dropped", "err", err)
 		}
@@ -116,17 +117,21 @@ func Connect(chat *ChatService, win *mygo.Window) {
 
 	emit(ConnState{State: "starting"})
 	failures := 0
-	opts := hostOptions(bin)
-	for {
-		h, err := sidecar.Start(ctx, opts)
+	for ctx.Err() == nil {
+		h, err := sidecar.Start(ctx, hostOptions(bin))
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			failures++
 			if failures >= 5 {
 				emit(ConnState{State: "error", Message: err.Error()})
 				return
 			}
 			emit(ConnState{State: "reconnecting", Message: "host failed: retrying"})
-			time.Sleep(time.Second)
+			if !waitForRestart(ctx, time.Second) {
+				return
+			}
 			continue
 		}
 		failures = 0
@@ -151,13 +156,31 @@ func Connect(chat *ChatService, win *mygo.Window) {
 		chat.setManager(mgr)
 		emit(ConnState{State: "ready"})
 
-		watchUnresolved(ctx, mgr, emit)
-
-		<-h.Exited // the host process died; the turn state lives in its journal
+		select {
+		case <-ctx.Done():
+			h.Stop()
+		case <-h.Exited: // the turn state lives in the host's journal
+		}
 		clearCurrentHost(h)
 		chat.setManager(nil)
+		if ctx.Err() != nil {
+			return
+		}
 		emit(ConnState{State: "reconnecting", Message: "host exited; restarting"})
-		time.Sleep(500 * time.Millisecond)
+		if !waitForRestart(ctx, 500*time.Millisecond) {
+			return
+		}
+	}
+}
+
+func waitForRestart(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
@@ -173,32 +196,4 @@ func clearCurrentHost(h *sidecar.Host) {
 		currentHost.h = nil
 	}
 	currentHost.Unlock()
-}
-
-// watchUnresolved surfaces the recovery states the protocol can leave a
-// session in (design §6.5/§6.6): while the outcome is unresolved or a tool
-// continuation is pending, new work is blocked; the banner stays until the
-// session resolves.
-func watchUnresolved(ctx context.Context, mgr *client.SessionManager, emit func(ConnState)) {
-	s, err := mgr.Summary(ctx)
-	if err != nil {
-		return // the ready banner already reflects usable state
-	}
-	if s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED &&
-		s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_TOOL_CONTINUATION_PENDING {
-		return
-	}
-	emit(ConnState{State: "unresolved", Message: "上次的结果不确定，等待恢复；已暂停新消息"})
-	for {
-		time.Sleep(2 * time.Second)
-		s, err := mgr.Summary(ctx)
-		if err != nil {
-			continue
-		}
-		if s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED &&
-			s.RecoveryState != appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_TOOL_CONTINUATION_PENDING {
-			emit(ConnState{State: "ready"})
-			return
-		}
-	}
 }

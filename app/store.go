@@ -24,13 +24,16 @@ type StoredTurn struct {
 type PendingSubmission struct {
 	SubmissionID string `json:"submissionId"`
 	Text         string `json:"text"`
+	WireText     string `json:"wireText,omitempty"`
 	AfterTurn    uint64 `json:"afterTurn,string"`
 }
 
 type storeData struct {
-	SessionID string             `json:"sessionId"`
-	Turns     []StoredTurn       `json:"turns,omitempty"`
-	Pending   *PendingSubmission `json:"pending,omitempty"`
+	SessionID       string             `json:"sessionId"`
+	Turns           []StoredTurn       `json:"turns,omitempty"`
+	Pending         *PendingSubmission `json:"pending,omitempty"`
+	ParentSessionID string             `json:"parentSessionId,omitempty"`
+	Inherited       []StoredTurn       `json:"inherited,omitempty"`
 }
 
 // Store persists the applied projection plus cursor atomically (write to a
@@ -88,6 +91,32 @@ func (s *Store) BindSession(id string) error {
 func (s *Store) Turns() []StoredTurn {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	rows := append([]StoredTurn(nil), s.data.Inherited...)
+	return append(rows, s.data.Turns...)
+}
+
+// SeedContinuation preserves the known transcript separately from the new
+// journal's ordinals. The interrupted source journal stays untouched.
+func (s *Store) SeedContinuation(parent string, history []StoredTurn) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.ParentSessionID = parent
+	s.data.Inherited = append([]StoredTurn(nil), history...)
+	return s.saveLocked()
+}
+
+func (s *Store) continuation() (string, []StoredTurn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.data.Turns) != 0 {
+		return s.data.ParentSessionID, nil
+	}
+	return s.data.ParentSessionID, append([]StoredTurn(nil), s.data.Inherited...)
+}
+
+func (s *Store) localTurns() []StoredTurn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return append([]StoredTurn(nil), s.data.Turns...)
 }
 
@@ -135,6 +164,21 @@ func (s *Store) UpsertTurn(t StoredTurn) error {
 	}
 	s.mu.Unlock()
 	return s.Save()
+}
+
+// DeleteSession removes one session's projection file (the host journal
+// copy stays; the conversation list decides what is visible).
+func (s *Store) DeleteSession(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.SessionID == id {
+		return fmt.Errorf("store: cannot delete the bound session")
+	}
+	err := os.Remove(s.sessionPath(id))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("store: delete projection: %w", err)
+	}
+	return nil
 }
 
 // Save writes the store atomically: temp file in the same directory, fsync,

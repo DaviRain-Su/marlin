@@ -116,6 +116,53 @@ func (r *SessionRegistry) Touch(id, title string) {
 	_ = r.Save()
 }
 
+// Rename sets a session's display title.
+func (r *SessionRegistry) Rename(id, title string) error {
+	title = truncateTitle(title)
+	if title == "" {
+		return fmt.Errorf("session registry: empty title")
+	}
+	r.mu.Lock()
+	if !r.hasLocked(id) {
+		r.mu.Unlock()
+		return fmt.Errorf("session registry: unknown session %q", id)
+	}
+	for i := range r.data.Items {
+		if r.data.Items[i].ID == id {
+			r.data.Items[i].Title = title
+			break
+		}
+	}
+	r.mu.Unlock()
+	return r.Save()
+}
+
+// Delete removes a session from the list. The current session cannot be
+// deleted (switch first); the host journal copy stays untouched.
+func (r *SessionRegistry) Delete(id string) error {
+	r.mu.Lock()
+	if r.data.Current == id {
+		r.mu.Unlock()
+		return fmt.Errorf("session registry: cannot delete the open session")
+	}
+	kept := r.data.Items[:0]
+	found := false
+	for _, it := range r.data.Items {
+		if it.ID == id {
+			found = true
+			continue
+		}
+		kept = append(kept, it)
+	}
+	if !found {
+		r.mu.Unlock()
+		return fmt.Errorf("session registry: unknown session %q", id)
+	}
+	r.data.Items = kept
+	r.mu.Unlock()
+	return r.Save()
+}
+
 func (r *SessionRegistry) hasLocked(id string) bool {
 	for _, it := range r.data.Items {
 		if it.ID == id {

@@ -240,7 +240,9 @@ App 退出时先 `CancelSessionTurn` 不需要；只需给 host 发 SIGTERM → 
 | 无 receipt | "本地凭证缺失"，可用 `GetSessionTurnCancellation` 读回记录证据 |
 
 - `cancellation_requested=false`（对已完成 turn 的重复取消）不视为错误。
-- App/窗口关闭 ≠ 取消：mygo 的方法 context 会被页关闭取消（见 §7），这只应**断开 watch**，绝不能误触 CancelSessionTurn——turn 在 host 侧继续执行，下次打开用 summary + cursor 恢复。这正是该协议的设计意图，v1 把它作为默认行为（关闭窗口 = 后台继续跑）。
+- **桌面续接（2026-11-14）**：`REMOTE_UNCERTAIN` 仍保留原 journal，不把取消伪装为完成。下一次发送或点击“携带历史继续”时，App 创建带“（续）”标题的新 Session，复制已知历史作为独立的 inherited 投影，并把历史摘录放进新 Session 的第一条请求。摘录最多 128 KiB，连同当前消息不超过 host 的 256 KiB 输入预算；超长历史从较早部分截断，不宣称恢复了远端工具结果，也不自动重试旧工具动作。原 Session 可切回查看。
+- Stop 暂停尚未发送的队列；用户可继续发送队列或清空。普通回复完成时，按同一会话的 FIFO 顺序自动发出排队消息。
+- 页面关闭只断开 watch，不调用 CancelSessionTurn；host 仍运行时 turn 可以继续。整个 App 退出则停止 host；下次打开从 journal 重放本地已准入 turn，若其远端状态不确定则显示续接入口，不声称后台任务仍在运行。
 
 ### 6.6 本地持久化
 单文件 JSON（app data 目录，v1 足够；后续可换 SQLite）：
@@ -256,7 +258,10 @@ App 退出时先 `CancelSessionTurn` 不需要；只需给 host 发 SIGTERM → 
 - `EMPTY`：清空视图；
 - `ACTIVE` 且本地有该 turn 投影：watch from cursor 续播；
 - `ACTIVE` 无本地投影 / `FINISHED`：watch from start 重放；
-- `UNRESOLVED` / `TOOL_CONTINUATION_PENDING`：呈现横幅，禁用输入，轮询 summary。
+- `UNRESOLVED`：呈现续接横幅，仍可输入；下一次发送按 §6.5 创建续接 Session。会话恢复状态由 `State()` 查询，不能阻塞 host 退出监控。
+- `TOOL_CONTINUATION_PENDING`：仍由上游工具恢复契约处理，不自动重放工具。
+
+续接投影把 `inherited` 和当前 journal 的 `turns` 分开保存，避免新 journal 从 ordinal 1 开始覆盖旧历史。pending 同时保留原始显示文本及实际 `wireText`，断线重试必须使用完全相同的请求。已准入但没有 outcome 的本地 turn 重开时从 journal 重放，不重新提交。
 
 ### 6.7 错误 → gRPC status 映射（client 层统一转换，UI 只看枚举）
 `UNAVAILABLE`（host 未起/崩溃）、`DATA_LOSS`（不完整流）、`ALREADY_EXISTS`、`ABORTED`、`FAILED_PRECONDITION`、`CANCELLED`（context）各映射到 6.3 表的分支；未知码归"连接问题，可重试"。
@@ -308,13 +313,14 @@ await sending;                                   // reject = Send 失败, 草稿
 
 ---
 
-## 8. 前端（`frontend/`，Bun + Vite + React/Svelte 任一）
+## 8. 前端（`src/`，Bun + Vite + TypeScript）
 
 - 消息列表：用户行 / 助手行；助手行按 turn ordinal 组织，流式 append markdown（增量渲染 + requestAnimationFrame 节流）。
+- 连续输入：生成中可以编辑和发送，消息进入每会话独立队列；发送失败暂停队列，保留尚未发送的文本，不覆盖正在编辑的新草稿。会话切换和新建操作串行化；草稿在本次 App 生命周期内按会话保留。
 - Stop 按钮：STREAMING 态可见；点击乐观显示"正在停止…"，由 receipt 三态（§6.5）更新终态文案。
 - 状态横幅组件：UNRESOLVED、REMOTE_UNCERTAIN、重连中、限额拒绝——四类文案由 `Snapshot`/事件驱动。
 - 输入框禁用逻辑严格跟随后端状态机（client 层经 `State()` 下发），前端不自行判断。
-- 不实现：历史搜索、多会话、设置页里的模型路由（host 配置文件承担）。
+- 已实现多会话及模型设置；历史搜索仍未实现。
 
 ---
 
@@ -451,6 +457,28 @@ dsh（`deepseek-ai/deepseek-harness`，内核 Cordis）："产品里一切皆插
 3. **scoped panel 客户端契约**："Plugin activation and scoped panel actions have their own contracts"（RFC 原文），契约未发布；定稿前用 §12.3 本地方案。
 
 ---
+
+## 13. 流式输出验证与本地验收
+
+- `cmd/e2echeck -v` 打印每个文本 checkpoint 的到达时间；真实 App 按收到的内容刷新，不在收到完整回复后制造打字效果。
+- 2026-11-14 复测同一长回复：绕过 Marlin 直接读 Kimi HTTP/1 SSE，带工具声明最大文本间隔 7.756s，不带工具声明 6.229s；host 内 journal 写入多为 0–10ms。此前把批量到达归因于 Turso 的判断不成立；串行化存储操作没有改善，已移除试验改动。供应商端或其网络路径的停顿仍可能影响平滑度。
+- 工具循环由消费流直接驱动；Stop 丢弃流时也丢弃 provider 请求和受管理的工具 future，不再遗留等待下个 token 的后台循环。
+- 正常退出 App 时取消 host 监督循环，等待 host 退出后结束进程；取消后不会因 host 退出再次拉起它。设置重启也会重新读取启动配置。
+- `MARLIN_DATA_DIR=/absolute/test-dir` 同时隔离会话注册表、投影和 `app-sidecar.toml`。验收配置里的 `storage_path` 和 `tools_workspace` 也必须指向测试目录。打包 App 的默认路径仍是用户应用数据目录。
+- 隔离真机验收：长回复生成中连续提交 `QUEUE2`、`QUEUE3`，界面显示排队 2 条，投影随后按顺序记录三条 COMPLETED；下一条长回复生成中排队 1 条后 Stop，界面显示暂停 1 条，原 turn 记录 REMOTE_UNCERTAIN。清空该队列后直接询问前文暗号，新 Session 回答“蓝鲸”，继承的 5 条历史与新 ordinal 1 分开保存。Cmd+N 及来回切换分别恢复两份不同草稿；这些草稿和队列只在内存保留。
+- 退出清理验收：旧构建正常 Quit 后留下孤立 host；新版使用独立空白数据启动两个实例，对其中一个执行原生 Quit，确认该 App 与其 host 都已退出，另一个实例及其 host 仍运行。未对正在被用户操作的窗口继续切换、输入或关闭。
+
+回归入口：
+
+```sh
+CGO_ENABLED=0 go test ./...
+go vet ./...
+go test -race ./app ./client ./fakehost ./sidecar
+bun run typecheck
+bunx mygo vet .
+cargo test --manifest-path host-bin/Cargo.toml
+bun run build
+```
 
 ## 附：协议语义速查（实现时对照上游 README）
 

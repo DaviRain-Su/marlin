@@ -235,15 +235,23 @@ func (h *Host) StartSessionTurn(ctx context.Context, req *appv1.StartSessionTurn
 	if err != nil {
 		return nil, err
 	}
-	if s.activeTurn != 0 {
-		return nil, statusError(codes.FailedPrecondition, "session busy: active turn")
-	}
 	if ord, ok := s.bySubmit[req.GetSubmissionId()]; ok {
 		t := s.turns[ord]
 		if t.inputText == req.GetUserText() && t.afterTurn == req.GetAfterTurn() {
 			return &appv1.StartSessionTurnResponse{Turn: turnRef(s.id, ord)}, nil
 		}
 		return nil, statusError(codes.AlreadyExists, "submission id reused with different input")
+	}
+	if s.activeTurn != 0 {
+		return nil, statusError(codes.FailedPrecondition, "session busy: active turn")
+	}
+	if latest := s.turns[s.latest]; latest != nil {
+		latest.mu.Lock()
+		uncertain := latest.outcome == appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REMOTE_UNCERTAIN
+		latest.mu.Unlock()
+		if uncertain {
+			return nil, statusError(codes.FailedPrecondition, "Session has an unresolved turn")
+		}
 	}
 	if req.GetAfterTurn() != s.latest {
 		return nil, statusError(codes.FailedPrecondition, "stale after_turn")
@@ -377,7 +385,13 @@ func (h *Host) GetSessionSummary(ctx context.Context, req *appv1.GetSessionSumma
 		return resp, nil
 	}
 	resp.LatestTurn = turnRef(s.id, s.latest)
-	if s.activeTurn == s.latest {
+	latest := s.turns[s.latest]
+	latest.mu.Lock()
+	uncertain := latest.outcome == appv1.SessionTurnOutcome_SESSION_TURN_OUTCOME_REMOTE_UNCERTAIN
+	latest.mu.Unlock()
+	if uncertain {
+		resp.RecoveryState = appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_UNRESOLVED
+	} else if s.activeTurn == s.latest {
 		resp.RecoveryState = appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_ACTIVE
 	} else {
 		resp.RecoveryState = appv1.SessionRecoveryState_SESSION_RECOVERY_STATE_FINISHED
