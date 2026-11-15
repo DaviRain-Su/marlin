@@ -3,6 +3,8 @@
 > 基于 `marlin-agent-app-server`（`marlin.app.v1` gRPC 协议）+ [mygo](https://github.com/egoist/mygo)（web 前端模式）
 > 版本：v0.2 · 2026-11-13 · 范式：Go 桌面 App（gRPC 客户端）+ Rust sidecar host
 
+> 当前实现更新（2026-11-15）：已支持多 Session、应用内模型设置、Stop 后携历史续接及消息排队；新增单活动项目的目录选择、根目录指令、文件预览和 Git diff。所有会话共享项目，尚无每会话 worktree 或工具审批。当前项目功能以 [项目编码规格](project-coding/03-technical-spec.md) 为准。下文保留早期设计和后续增量章节，涉及单 Session、无设置界面、停止后禁止继续输入的早期限制已由后续实现取代。
+
 ---
 
 ## 1. 目标与非目标
@@ -14,10 +16,10 @@
 - App 退出/重启后可恢复会话视图（持久化投影 + cursor）。
 
 ### 非目标（v1）
-- 多 Session 创建/切换（上游明确 "Dynamic Session creation and selection need a separate integration contract"，当前 host 绑定单 Session）。
+- 每 Session 独立项目目录、worktree 和并行后台任务（当前 host 的工具工作区仍为全局）。
 - 工具调用恢复（上游 text-turn 契约不含 tool-call recovery；`TOOL_CONTINUATION_PENDING` 状态先只做展示）。
 - gRPC-Web / 浏览器部署（schema 已为此预留，后续可复用）。
-- App 内配置模型路由：provider 凭证与路由属 host 边界，v1 通过配置文件传给 sidecar。
+- App 内工具审批、可恢复工具调用记录（当前 text-turn 契约未承载这些事件）。
 
 ---
 

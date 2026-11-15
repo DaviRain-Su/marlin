@@ -58,7 +58,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match arg.as_str() {
             "--bind-addr" => bind_addr = args.next().ok_or("--bind-addr needs a value")?,
             "--session-id" => session_id = args.next().ok_or("--session-id needs a value")?,
-            "--config" => config_path = Some(PathBuf::from(args.next().ok_or("--config needs a value")?)),
+            "--config" => {
+                config_path = Some(PathBuf::from(args.next().ok_or("--config needs a value")?))
+            }
             other => return Err(format!("unknown argument {other:?}").into()),
         }
     }
@@ -71,7 +73,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => FileConfig::default(),
     };
 
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
     rt.block_on(serve(bind_addr, session_id, cfg, config_path))
     // --session-id stays accepted for CLI compatibility; with the
     // session_lookup wiring above, Session identity is client-minted and
@@ -84,7 +88,12 @@ fn toml_cfg(path: &PathBuf) -> Result<FileConfig, Box<dyn std::error::Error>> {
     Ok(toml::from_str(&raw)?)
 }
 
-async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+async fn serve(
+    bind_addr: String,
+    _session_flag: String,
+    cfg: FileConfig,
+    config_path: Option<PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let provider = cfg.provider.clone().unwrap_or_else(|| "kimi".into());
     let protocol = match cfg.protocol.as_deref().unwrap_or(match provider.as_str() {
         "deepseek" => "openai",
@@ -102,14 +111,20 @@ async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config
             "deepseek" => &["DEEPSEEK_API_KEY"],
             _ => &["KIMI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
         };
-        names.iter().find_map(|n| env::var(n).ok()).unwrap_or_default()
+        names
+            .iter()
+            .find_map(|n| env::var(n).ok())
+            .unwrap_or_default()
     });
     if credential.trim().is_empty() {
         // Fail fast instead of producing REMOTE_UNCERTAIN turns: the App
         // banner shows this through the sidecar's error state.
         return Err(format!(
             "no provider credential: set api_key in {} or export {}",
-            config_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "app-sidecar.toml".into()),
+            config_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "app-sidecar.toml".into()),
             match provider.as_str() {
                 "deepseek" => "DEEPSEEK_API_KEY",
                 _ => "KIMI_API_KEY",
@@ -120,23 +135,33 @@ async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config
 
     // Endpoint URL: config base_url, else per-provider default (the kimi
     // default honors ANTHROPIC_BASE_URL like devhost does).
-    let base_url = cfg.base_url.clone().unwrap_or_else(|| match provider.as_str() {
-        "deepseek" => "https://api.deepseek.com".into(),
-        _ => env::var("ANTHROPIC_BASE_URL").unwrap_or_else(|_| "https://api.kimi.com/coding/".into()),
-    });
+    let base_url = cfg
+        .base_url
+        .clone()
+        .unwrap_or_else(|| match provider.as_str() {
+            "deepseek" => "https://api.deepseek.com".into(),
+            _ => env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| "https://api.kimi.com/coding/".into()),
+        });
 
     // Model: config model, else per-provider default (kimi honors the
     // ANTHROPIC_MODEL family like devhost does).
-    let model = cfg.model.clone().unwrap_or_else(|| match provider.as_str() {
-        "deepseek" => "deepseek-chat".into(),
-        _ => ["KIMI_MODEL", "ANTHROPIC_MODEL", "CLAUDE_CODE_MODEL"]
-            .iter()
-            .find_map(|n| env::var(n).ok())
-            .unwrap_or_else(|| "k3".into()),
-    });
+    let model = cfg
+        .model
+        .clone()
+        .unwrap_or_else(|| match provider.as_str() {
+            "deepseek" => "deepseek-chat".into(),
+            _ => ["KIMI_MODEL", "ANTHROPIC_MODEL", "CLAUDE_CODE_MODEL"]
+                .iter()
+                .find_map(|n| env::var(n).ok())
+                .unwrap_or_else(|| "k3".into()),
+        });
 
     let client = Client::new(Duration::from_secs(120), 8 * 1024 * 1024)?;
-    let resolved = weaver_llm::resolve_direct_target(protocol, Some(&base_url), Some(&model), |name| env::var(name).ok())
+    let resolved =
+        weaver_llm::resolve_direct_target(protocol, Some(&base_url), Some(&model), |name| {
+            env::var(name).ok()
+        })
         .map_err(|e| format!("resolve endpoint {base_url} {model}: {e:?}"))?;
     let model_endpoint = ModelEndpoint::new(provider.clone(), resolved.1);
     model_endpoint.validate_contract()?;
@@ -188,7 +213,10 @@ async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config
     );
 
     // Session journal: one libsql file, next to the App's other state.
-    let storage_path = cfg.storage_path.map(PathBuf::from).unwrap_or_else(default_storage_path);
+    let storage_path = cfg
+        .storage_path
+        .map(PathBuf::from)
+        .unwrap_or_else(default_storage_path);
     if let Some(dir) = storage_path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -206,8 +234,15 @@ async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config
     let gateway: Arc<dyn marlin_agent_stream::ModelStreamingGateway> = match &cfg.tools_workspace {
         Some(workspace) if !workspace.trim().is_empty() => {
             let allow = cfg.tools_allow.clone().unwrap_or_else(|| "*".into());
-            let allow: Vec<String> = allow.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect();
-            let surface = Arc::new(tool_loop::ToolSurface::shell(PathBuf::from(workspace), allow)?);
+            let allow: Vec<String> = allow
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let surface = Arc::new(tool_loop::ToolSurface::shell(
+                PathBuf::from(workspace),
+                allow,
+            )?);
             let max_rounds = cfg.tools_max_rounds.unwrap_or(8).max(1);
             println!(
                 "tool surface: run_command at {workspace} (allow {:?}, max {max_rounds} rounds/turn)",
@@ -268,22 +303,23 @@ async fn serve(bind_addr: String, _session_flag: String, cfg: FileConfig, config
     };
 
     let token = env::var("MARLIN_HOST_AUTH_TOKEN")?;
-    let service = AppServer::new(
-        model_endpoint,
-        gateway,
-        move |metadata| {
-            let expected = format!("Bearer {token}");
-            match metadata.get("authorization") {
-                Some(value) if value.to_str().is_ok_and(|v| v == expected) => Ok(()),
-                _ => Err(tonic::Status::unauthenticated("missing or invalid bearer token")),
-            }
-        },
-    )?
+    let service = AppServer::new(model_endpoint, gateway, move |metadata| {
+        let expected = format!("Bearer {token}");
+        match metadata.get("authorization") {
+            Some(value) if value.to_str().is_ok_and(|v| v == expected) => Ok(()),
+            _ => Err(tonic::Status::unauthenticated(
+                "missing or invalid bearer token",
+            )),
+        }
+    })?
     .with_session_lookup(lookup)
     .into_service();
 
     println!("host ready addr={bind_addr}");
-    tonic::transport::Server::builder().add_service(service).serve(bind_addr.parse()?).await?;
+    tonic::transport::Server::builder()
+        .add_service(service)
+        .serve(bind_addr.parse()?)
+        .await?;
     Ok(())
 }
 

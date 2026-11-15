@@ -2,7 +2,7 @@ import { Channel } from "mygo-runtime";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
-import { ChatService, SettingsService, events, type StoredTurn, type TurnProgress } from "./mygo";
+import { ChatService, SettingsService, ProjectService, events, type StoredTurn, type TurnProgress } from "./mygo";
 
 // Model output is untrusted content rendered inside the page that holds the
 // Go IPC bridge — sanitize aggressively before it becomes HTML. Code blocks
@@ -102,6 +102,9 @@ function setComposer() {
   stopBtn.classList.toggle("hidden", !busy);
   stopBtn.disabled = stopping;
   $("#new-chat").toggleAttribute("disabled", busy || switching);
+  $("#project-open").toggleAttribute("disabled", busy || switching);
+  $("#project-choose").toggleAttribute("disabled", busy || switching);
+  $("#settings-apply").toggleAttribute("disabled", busy || switching);
   for (const btn of sessionList.querySelectorAll<HTMLButtonElement>("button")) {
     btn.disabled = busy || switching;
   }
@@ -238,9 +241,7 @@ async function refreshChips() {
     const model = snap.model || (snap.provider === "deepseek" ? "deepseek-chat" : "k3");
     chipProvider.textContent = `${snap.provider || "kimi"} · ${model}`;
     composerChip.textContent = `${snap.provider || "kimi"} · ${model}`;
-    chipTools.textContent = snap.toolsWorkspace
-      ? `工具：${snap.toolsWorkspace.split("/").pop() || snap.toolsWorkspace}`
-      : "工具：未启用";
+    await refreshProject();
   } catch {
     chipProvider.textContent = "—";
   }
@@ -305,6 +306,131 @@ async function newSession(continueHistory = false) {
   }
 }
 $("#new-chat").addEventListener("click", () => void newSession());
+
+// ---- One active local project: native selection and read-only review ----
+
+const projectOverlay = $("#project-overlay");
+const projectPreview = $("#project-preview-text");
+let projectRead = 0;
+let projectRefresh = 0;
+let projectRoot = "";
+
+async function refreshProject() {
+  const revision = ++projectRefresh;
+  const snap = await ProjectService.state();
+  if (revision !== projectRefresh) return;
+  if (projectRoot !== snap.root) {
+    ++projectRead;
+    projectPreview.textContent = "";
+    projectRoot = snap.root;
+  }
+  chipTools.textContent = snap.root ? `项目：${snap.name}` : "项目：未打开";
+  chipTools.title = snap.root || "打开项目以启用编码";
+  $("#project-review").textContent = snap.root ? `项目：${snap.name}` : "项目与变更";
+  $("#project-review").title = snap.root || "查看项目文件与 Git 变更";
+  $("#project-title").textContent = snap.name || "项目与变更";
+  $("#project-root").textContent = snap.root || "打开本地目录后，可以让 Agent 读改文件、运行测试。";
+  $("#project-summary").textContent = snap.root
+    ? `${snap.branch ? `分支：${snap.branch}` : "普通目录（未启用 Git）"} · ${snap.files.length} 个文件${snap.truncated ? "（列表或状态已截断）" : ""}`
+    : "";
+  $("#project-diff").toggleAttribute("disabled", !snap.branch);
+  const status = document.createElement("pre");
+  status.className = "hint";
+  status.textContent = snap.status || (snap.branch ? "工作区干净" : "");
+  const files = snap.files.map((path) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "project-file";
+    btn.textContent = path;
+    btn.title = path;
+    btn.addEventListener("click", () => void previewProjectFile(path));
+    return btn;
+  });
+  $("#project-files").replaceChildren(status, ...files);
+}
+
+async function previewProjectFile(path: string) {
+  const revision = ++projectRead;
+  $("#project-preview-title").textContent = path;
+  projectPreview.textContent = "加载中…";
+  try {
+    const text = await ProjectService.readFile(path);
+    if (revision === projectRead) projectPreview.textContent = text;
+  } catch (err) {
+    if (revision === projectRead) projectPreview.textContent = String(err);
+  }
+}
+
+async function showProjectDiff() {
+  const revision = ++projectRead;
+  $("#project-preview-title").textContent = "Git diff";
+  projectPreview.textContent = "加载中…";
+  try {
+    const text = await ProjectService.diff();
+    if (revision === projectRead) projectPreview.textContent = text || "没有已跟踪文件的变更。未跟踪文件可在左侧预览。";
+  } catch (err) {
+    if (revision === projectRead) projectPreview.textContent = String(err);
+  }
+}
+
+async function openProjectPanel() {
+  projectOverlay.classList.remove("hidden");
+  try {
+    await refreshProject();
+    if (projectRoot) await showProjectDiff();
+  } catch (err) {
+    projectPreview.textContent = String(err);
+  }
+}
+
+async function chooseProject() {
+  if (busy || switching) return;
+  switching = true;
+  setComposer();
+  try {
+    drafts.set(currentSessionId, draft.value);
+    const selected = await ProjectService.choose();
+    if (!selected.sessionId) return;
+    currentSessionId = selected.sessionId;
+    draft.value = "";
+    projectOverlay.classList.add("hidden");
+    const snap = await refreshAll();
+    showBanner(snap.ready ? "ready" : "reconnecting", snap.ready ? undefined : "正在加载项目…");
+  } catch (err) {
+    showActionError(err);
+  } finally {
+    switching = false;
+    renderQueue();
+    setComposer();
+  }
+}
+
+for (const id of ["#project-open", "#project-choose"]) {
+  $(id).addEventListener("click", () => void chooseProject());
+}
+for (const el of [$("#project-review"), chipTools]) {
+  el.addEventListener("click", () => void openProjectPanel());
+}
+$("#project-close").addEventListener("click", () => {
+  ++projectRead;
+  projectOverlay.classList.add("hidden");
+});
+$("#project-diff").addEventListener("click", () => void showProjectDiff());
+$("#project-refresh").addEventListener("click", () => {
+  void refreshProject().then(showProjectDiff).catch((err) => { projectPreview.textContent = String(err); });
+});
+projectOverlay.addEventListener("click", (e) => {
+  if (e.target === projectOverlay) {
+    ++projectRead;
+    projectOverlay.classList.add("hidden");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    ++projectRead;
+    projectOverlay.classList.add("hidden");
+  }
+});
 
 // ---- Unresolved sessions: the host refuses new turns after a cancelled or
 // interrupted one. A continuation preserves the transcript in a fresh
@@ -707,7 +833,7 @@ function openSettings() {
     setKey.value = "";
     setKey.placeholder = snap.keyConfigured ? "已配置（输入新值以更换）" : "未配置";
     settingsPath.textContent = `配置文件：${snap.configPath}`;
-    settingsHint.textContent = snap.hostRunning ? "" : "host 未运行，保存后将于下次启动生效";
+    settingsHint.textContent = snap.hostRunning ? "" : "保存后点击「保存并重启 host」即可重新启动。";
   })().catch((err) => {
     settingsHint.textContent = `读取失败：${err instanceof Error ? err.message : String(err)}`;
   });
@@ -738,9 +864,16 @@ document.addEventListener("keydown", (e) => {
 });
 
 // The provider/tool chips open the same modal.
-for (const el of [chipProvider, chipTools, composerChip]) {
+for (const el of [chipProvider, composerChip]) {
   el.addEventListener("click", openSettings);
 }
+setProvider.addEventListener("change", () => {
+  setModel.value = "";
+  setBaseUrl.value = "";
+  setKey.value = "";
+  setKey.placeholder = "输入此 provider 的 API Key，或使用其环境变量";
+  settingsHint.textContent = "切换 provider 会清除旧凭证并恢复该 provider 的模型、端点和协议默认值。";
+});
 
 $("#settings-save").addEventListener("click", () => {
   void SettingsService.save(settingsInput())

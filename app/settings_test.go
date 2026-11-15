@@ -90,3 +90,39 @@ func TestSettingsEmptyToolsWorkspaceDisablesTools(t *testing.T) {
 		t.Fatalf("workspace must clear, got %q", cfg.ToolsWorkspace)
 	}
 }
+
+func TestSettingsClearDefaultsAndChangeProvider(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	svc := NewSettingsService(path)
+	if err := svc.Save(SettingsInput{Provider: "kimi", Model: "k3", BaseURL: "https://example.invalid", APIKey: "fake-test-key"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Save(SettingsInput{Provider: "kimi"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := sidecar.LoadConfig(path)
+	if cfg.Model != "" || cfg.BaseURL != "" || cfg.APIKey != "fake-test-key" {
+		t.Fatal("empty overrides must restore defaults without clearing this provider's credential")
+	}
+	if err := svc.Save(SettingsInput{Provider: "deepseek"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ = sidecar.LoadConfig(path)
+	if cfg.APIKey != "" {
+		t.Fatal("provider switch retained another provider's credential")
+	}
+}
+
+func TestSettingsSwitchFromImplicitKimiClearsCredential(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := sidecar.SaveConfig(path, sidecar.HostConfig{APIKey: "fake-implicit-kimi-key", Protocol: "anthropic", Auth: "bearer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewSettingsService(path).Save(SettingsInput{Provider: "deepseek"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := sidecar.LoadConfig(path)
+	if err != nil || cfg.APIKey != "" || cfg.Protocol != "" || cfg.Auth != "" {
+		t.Fatal("implicit default provider credentials crossed into DeepSeek")
+	}
+}

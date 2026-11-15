@@ -40,12 +40,17 @@ type SettingsInput struct {
 // picks up changes on its next start.
 type SettingsService struct {
 	configPath string
+	chat       *ChatService
 }
 
 // NewSettingsService builds the service over the given config path
 // (sidecar.DefaultConfigPath in production).
-func NewSettingsService(configPath string) *SettingsService {
-	return &SettingsService{configPath: configPath}
+func NewSettingsService(configPath string, chat ...*ChatService) *SettingsService {
+	s := &SettingsService{configPath: configPath}
+	if len(chat) > 0 {
+		s.chat = chat[0]
+	}
+	return s
 }
 
 // State reads the current config with the credential masked.
@@ -69,6 +74,12 @@ func (s *SettingsService) State() (SettingsSnapshot, error) {
 // Save merges the input into the config file. Provider is validated: the
 // host only routes kimi and deepseek (echo needs no credential).
 func (s *SettingsService) Save(in SettingsInput) error {
+	if s.chat != nil {
+		if !s.chat.operation.TryLock() {
+			return fmt.Errorf("a session operation is running")
+		}
+		defer s.chat.operation.Unlock()
+	}
 	switch in.Provider {
 	case "kimi", "deepseek", "":
 	default:
@@ -79,14 +90,17 @@ func (s *SettingsService) Save(in SettingsInput) error {
 		return fmt.Errorf("settings: read config: %w", err)
 	}
 	if in.Provider != "" {
+		previousProvider := cfg.Provider
+		if previousProvider == "" {
+			previousProvider = "kimi"
+		}
+		if previousProvider != in.Provider {
+			cfg.APIKey, cfg.Protocol, cfg.Auth = "", "", ""
+		}
 		cfg.Provider = in.Provider
 	}
-	if in.Model != "" {
-		cfg.Model = in.Model
-	}
-	if in.BaseURL != "" {
-		cfg.BaseURL = in.BaseURL
-	}
+	cfg.Model = in.Model
+	cfg.BaseURL = in.BaseURL
 	if in.APIKey != "" {
 		cfg.APIKey = in.APIKey
 	}
@@ -102,9 +116,15 @@ func (s *SettingsService) Save(in SettingsInput) error {
 
 // Apply restarts the host so the saved config takes effect immediately.
 func (s *SettingsService) Apply() error {
-	if !hostRunning() {
-		return fmt.Errorf("settings: host is not running; changes apply at the next start")
+	if s.chat != nil {
+		if !s.chat.operation.TryLock() {
+			return fmt.Errorf("a session operation is running")
+		}
+		defer s.chat.operation.Unlock()
+		if s.chat.busy() {
+			return fmt.Errorf("wait for the current turn before restarting")
+		}
+		s.chat.setManager(nil)
 	}
-	RestartHost()
-	return nil
+	return RestartHost()
 }

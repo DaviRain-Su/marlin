@@ -21,6 +21,19 @@ export interface ConnState {
   message?: string;
 }
 
+export interface ProjectSelection {
+  sessionId: string;
+}
+
+export interface ProjectSnapshot {
+  root: string;
+  name: string;
+  branch: string;
+  status: string;
+  files: string[];
+  truncated: boolean;
+}
+
 /** SessionMeta is one entry in the conversation list the sidebar renders. */
 export interface SessionMeta {
   id: string;
@@ -194,6 +207,28 @@ export const SettingsService = {
   /** State reads the current config with the credential masked. */
   state(): Promise<SettingsSnapshot> {
     return call("SettingsService.State");
+  },
+} as const;
+
+/**
+ * ProjectService inspects the single active workspace. Execution stays in
+ * the Rust host; this directory is a working directory, not a sandbox.
+ */
+export const ProjectService = {
+  choose(): Promise<ProjectSelection> {
+    return call("ProjectService.Choose");
+  },
+  diff(): Promise<string> {
+    return call("ProjectService.Diff");
+  },
+  open(path: string): Promise<ProjectSelection> {
+    return call("ProjectService.Open", path);
+  },
+  readFile(path: string): Promise<string> {
+    return call("ProjectService.ReadFile", path);
+  },
+  state(): Promise<ProjectSnapshot> {
+    return call("ProjectService.State");
   },
 } as const;
 

@@ -54,7 +54,8 @@ func main() {
 	registry := app.LoadSessionRegistry(filepath.Join(storeDir(), "registry.json"))
 	chat := app.NewChatService(app.LoadStore(storeDir()), registry)
 	mygo.Bind(chat)
-	mygo.Bind(app.NewSettingsService(configPath()))
+	mygo.Bind(app.NewSettingsService(configPath(), chat))
+	mygo.Bind(app.NewProjectService(configPath(), chat))
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{

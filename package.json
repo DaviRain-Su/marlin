@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "mygo dev",
     "build": "bun run build:host && mygo build",
-    "build:host": "cargo build --release --manifest-path host-bin/Cargo.toml && cp host-bin/target/release/marlin-host resources/darwin-arm64/marlin-host",
+    "build:host": "cargo build --release --manifest-path host-bin/Cargo.toml && mkdir -p resources/darwin-arm64 && cp host-bin/target/release/marlin-host resources/darwin-arm64/marlin-host",
     "generate": "mygo generate",
     "dev:web": "vite",
     "build:web": "tsc --noEmit && vite build",

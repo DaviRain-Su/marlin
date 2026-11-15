@@ -54,6 +54,20 @@ body {
 
 .hidden { display: none !important; }
 
+#project-panel { width: min(1100px, calc(100vw - 2rem)); max-height: 90vh; }
+#project-panel p { margin: 0.35rem 0; overflow-wrap: anywhere; }
+.project-content { display: flex; min-height: 260px; height: 55vh; gap: 1rem; margin-top: 0.7rem; }
+#project-files { width: 240px; flex: none; overflow: auto; border-right: 1px solid var(--border); padding-right: 0.6rem; }
+#project-files pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-file { display: block; border: 0; background: transparent; color: inherit; text-align: left; width: 100%; font: inherit; font-size: 0.78rem; padding: 0.35rem; border-radius: 5px; overflow-wrap: anywhere; cursor: pointer; }
+.project-file:hover, .project-file:focus-visible { background: var(--code-bg); }
+.project-preview { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 0.6rem; }
+#project-preview-text { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 0.8rem; background: var(--code-bg); font: 0.78rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: 8px; tab-size: 4; }
+@media (max-width: 700px) {
+  #project-files { width: 30%; }
+  #project-panel .settings-head { flex-wrap: wrap; }
+}
+
 .spacer { flex: 1; }
 
 /* ---- Sidebar ---- */

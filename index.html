@@ -10,6 +10,7 @@
     <div id="app">
       <aside id="sidebar">
         <button id="new-chat" type="button" class="new-chat">＋ 新对话</button>
+        <button id="project-open" type="button" class="side-btn">打开项目…</button>
         <div class="side-card">
           <div class="status-line">
             <span id="status-dot" class="dot" data-state="starting"></span>
@@ -32,6 +33,7 @@
           <button id="side-toggle" type="button" title="收起/展开侧栏">☰</button>
           <div id="session-title" class="session-title" title="点击重命名当前会话">新对话</div>
           <span class="spacer"></span>
+          <button id="project-review" type="button" class="chip" title="查看项目文件与 Git 变更">项目与变更</button>
         </div>
         <div id="banner" class="banner hidden"></div>
         <div id="unresolved-bar" class="unresolved-bar hidden">
@@ -77,6 +79,28 @@
           <div class="disclaimer">Marlin 可能会犯错，请核查重要信息。</div>
         </div>
       </main>
+    </div>
+    <div id="project-overlay" class="overlay hidden">
+      <section id="project-panel" class="settings" role="dialog" aria-modal="true" aria-labelledby="project-title">
+        <div class="settings-head">
+          <h3 id="project-title">项目与变更</h3>
+          <span class="spacer"></span>
+          <button id="project-refresh" type="button">刷新变更</button>
+          <button id="project-choose" type="button">打开项目…</button>
+          <button id="project-close" type="button" title="关闭项目面板">关闭</button>
+        </div>
+        <p id="project-root" class="hint"></p>
+        <p class="hint">所有会话共享当前项目。Agent 可执行本机命令；项目目录不是沙箱。</p>
+        <p id="project-summary" class="hint"></p>
+        <div class="project-content">
+          <nav id="project-files" aria-label="项目文件"></nav>
+          <div class="project-preview">
+            <button id="project-diff" type="button">查看 Git diff（含暂存区，不含未跟踪文件）</button>
+            <div id="project-preview-title" class="hint">文件预览</div>
+            <pre id="project-preview-text" tabindex="0"></pre>
+          </div>
+        </div>
+      </section>
     </div>
     <div id="settings-overlay" class="overlay hidden">
       <div id="settings" class="settings" role="dialog" aria-modal="true">

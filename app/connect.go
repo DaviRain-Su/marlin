@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -47,7 +48,7 @@ func hostBinaryPath() string {
 func hostOptions(bin string) sidecar.Options {
 	opts := sidecar.Options{Binary: bin}
 	if cfgPath, err := sidecar.DefaultConfigPath(); err == nil {
-		if _, err := sidecar.LoadConfig(cfgPath); err == nil {
+		if _, err := os.Stat(cfgPath); err == nil {
 			// The host applies the config itself; the sidecar only hands
 			// over the path and leaves the session binding to the host.
 			opts.ExtraArgs = append(opts.ExtraArgs, "--config", cfgPath)
@@ -57,7 +58,9 @@ func hostOptions(bin string) sidecar.Options {
 		}
 	}
 	// Dev path: no config file — devhost reads provider env/flags itself.
-	opts.ExtraArgs = append(opts.ExtraArgs, "--provider", hostProvider())
+	if filepath.Base(bin) == "devhost" {
+		opts.ExtraArgs = append(opts.ExtraArgs, "--provider", hostProvider())
+	}
 	return opts
 }
 
@@ -66,7 +69,9 @@ func hostOptions(bin string) sidecar.Options {
 // lifecycle; this only holds a handle.
 var currentHost struct {
 	sync.Mutex
-	h *sidecar.Host
+	h         *sidecar.Host
+	restart   chan struct{}
+	workspace string
 }
 
 func hostRunning() bool {
@@ -77,13 +82,17 @@ func hostRunning() bool {
 
 // RestartHost stops the running host; the Connect supervisor respawns it
 // with the current config (design §5.2 restart-on-exit).
-func RestartHost() {
+func RestartHost() error {
 	currentHost.Lock()
-	h := currentHost.h
-	currentHost.Unlock()
-	if h != nil {
-		h.Stop() // Exited closes → the supervisor loop respawns
+	defer currentHost.Unlock()
+	if currentHost.restart == nil {
+		return fmt.Errorf("host supervisor is not running")
 	}
+	select {
+	case currentHost.restart <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 // hostProvider resolves which model gateway the dev host should use.
@@ -101,6 +110,15 @@ func hostProvider() string {
 // goroutine and reports every transition through the Status event
 // (design doc §5.2–5.3).
 func Connect(ctx context.Context, chat *ChatService, win *mygo.Window) {
+	restart := make(chan struct{}, 1)
+	currentHost.Lock()
+	currentHost.restart = restart
+	currentHost.Unlock()
+	defer func() {
+		currentHost.Lock()
+		currentHost.restart = nil
+		currentHost.Unlock()
+	}()
 	emit := func(state ConnState) {
 		if ctx.Err() != nil {
 			return
@@ -118,24 +136,51 @@ func Connect(ctx context.Context, chat *ChatService, win *mygo.Window) {
 	emit(ConnState{State: "starting"})
 	failures := 0
 	for ctx.Err() == nil {
-		h, err := sidecar.Start(ctx, hostOptions(bin))
+		chat.operation.Lock()
+		opts := hostOptions(bin)
+		workspace := ""
+		for i, arg := range opts.ExtraArgs {
+			if arg == "--config" && i+1 < len(opts.ExtraArgs) {
+				if cfg, err := sidecar.LoadConfig(opts.ExtraArgs[i+1]); err == nil {
+					workspace = cfg.ToolsWorkspace
+				}
+			}
+		}
+		h, err := sidecar.Start(ctx, opts)
 		if err != nil {
+			chat.operation.Unlock()
 			if ctx.Err() != nil {
 				return
 			}
 			failures++
 			if failures >= 5 {
 				emit(ConnState{State: "error", Message: err.Error()})
-				return
+				select {
+				case <-ctx.Done():
+					return
+				case <-restart:
+					failures = 0
+					continue
+				}
 			}
 			emit(ConnState{State: "reconnecting", Message: "host failed: retrying"})
-			if !waitForRestart(ctx, time.Second) {
+			if !waitForRestartSignal(ctx, time.Second, restart) {
 				return
 			}
 			continue
 		}
 		failures = 0
-		setCurrentHost(h)
+		setCurrentHost(h, workspace)
+		// A project switch must not install a manager for a host that was
+		// spawned with the previous directory while startup was in flight.
+		select {
+		case <-restart:
+			chat.operation.Unlock()
+			h.Stop()
+			clearCurrentHost(h)
+			continue
+		default:
+		}
 
 		// Bind the projection store and session manager to the registry's
 		// current Session (session identity is client-minted; capabilities
@@ -154,12 +199,16 @@ func Connect(ctx context.Context, chat *ChatService, win *mygo.Window) {
 			slog.Warn("summary sync failed", "err", err)
 		}
 		chat.setManager(mgr)
+		chat.operation.Unlock()
 		emit(ConnState{State: "ready"})
 
 		select {
 		case <-ctx.Done():
 			h.Stop()
+		case <-restart:
+			h.Stop()
 		case <-h.Exited: // the turn state lives in the host's journal
+			_ = h.Conn().Close()
 		}
 		clearCurrentHost(h)
 		chat.setManager(nil)
@@ -167,13 +216,17 @@ func Connect(ctx context.Context, chat *ChatService, win *mygo.Window) {
 			return
 		}
 		emit(ConnState{State: "reconnecting", Message: "host exited; restarting"})
-		if !waitForRestart(ctx, 500*time.Millisecond) {
+		if !waitForRestartSignal(ctx, 500*time.Millisecond, restart) {
 			return
 		}
 	}
 }
 
 func waitForRestart(ctx context.Context, delay time.Duration) bool {
+	return waitForRestartSignal(ctx, delay, nil)
+}
+
+func waitForRestartSignal(ctx context.Context, delay time.Duration, restart <-chan struct{}) bool {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
@@ -181,12 +234,15 @@ func waitForRestart(ctx context.Context, delay time.Duration) bool {
 		return false
 	case <-timer.C:
 		return true
+	case <-restart:
+		return true
 	}
 }
 
-func setCurrentHost(h *sidecar.Host) {
+func setCurrentHost(h *sidecar.Host, workspace string) {
 	currentHost.Lock()
 	currentHost.h = h
+	currentHost.workspace = workspace
 	currentHost.Unlock()
 }
 

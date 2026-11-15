@@ -4,38 +4,39 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 // HostConfig is the app-sidecar configuration (design doc §5):
 // model endpoint + provider credentials, read by the host at startup.
-// v1 uses a flat TOML subset: `key = "value"` lines and # comments.
+// Unknown host keys are preserved when the app changes known settings.
 type HostConfig struct {
 	// Provider selects the model gateway: deepseek (OpenAI wire) | kimi
 	// (Anthropic wire, Bearer auth). echo needs no credential.
-	Provider string
+	Provider string `toml:"provider,omitempty"`
 	// WireProtocol overrides the wire: anthropic | openai |
 	// openai-responses (default per provider).
-	Protocol string
+	Protocol string `toml:"protocol,omitempty"`
 	// Auth overrides the credential header: bearer | provider-default
 	// (kimi defaults to bearer; api.anthropic.com to x-api-key).
-	Auth string
+	Auth string `toml:"auth,omitempty"`
 	// APIKey is the provider credential; it overrides the environment.
-	APIKey string
+	APIKey string `toml:"api_key,omitempty"`
 	// BaseURL overrides the provider's default endpoint (a base, not the
 	// full request path — the host expands /v1/messages etc.).
-	BaseURL string
+	BaseURL string `toml:"base_url,omitempty"`
 	// Model overrides the provider's default model name.
-	Model string
+	Model string `toml:"model,omitempty"`
 	// SessionID pins the Session binding ("" lets the host choose).
-	SessionID string
+	SessionID string `toml:"session_id,omitempty"`
 	// StoragePath is the libsql session journal (host-side journal).
-	StoragePath string
+	StoragePath string `toml:"storage_path,omitempty"`
 	// ToolsWorkspace enables the host tool surface: a run_command shell
 	// tool rooted at this directory. Empty disables tools (default).
-	ToolsWorkspace string
+	ToolsWorkspace string `toml:"tools_workspace,omitempty"`
 	// ToolsAllow is a comma-separated tool-name allowlist ("*" = all).
-	ToolsAllow string
+	ToolsAllow string `toml:"tools_allow,omitempty"`
 }
 
 // DefaultConfigPath is the user-level config location:
@@ -64,78 +65,63 @@ func LoadConfig(path string) (HostConfig, error) {
 	if err != nil {
 		return c, fmt.Errorf("sidecar: read config: %w", err)
 	}
-	for i, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			return c, fmt.Errorf("sidecar: config %s line %d: expected key = \"value\"", filepath.Base(path), i+1)
-		}
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		value = strings.Trim(value, `"'`)
-		switch key {
-		case "provider":
-			c.Provider = value
-		case "protocol":
-			c.Protocol = value
-		case "auth":
-			c.Auth = value
-		case "api_key":
-			c.APIKey = value
-		case "base_url":
-			c.BaseURL = value
-		case "model":
-			c.Model = value
-		case "session_id":
-			c.SessionID = value
-		case "storage_path":
-			c.StoragePath = value
-		case "tools_workspace":
-			c.ToolsWorkspace = value
-		case "tools_allow":
-			c.ToolsAllow = value
-		default:
-			// Unknown keys stay ignored: the config grows before this
-			// reader does.
-		}
+	if err := toml.Unmarshal(data, &c); err != nil {
+		return HostConfig{}, fmt.Errorf("sidecar: malformed config %s", filepath.Base(path))
 	}
 	return c, nil
 }
 
-// SaveConfig writes c as a flat TOML file (0600), atomically via temp file
-// + rename. Empty fields are omitted so defaults and env fallbacks apply.
+// SaveConfig writes c as TOML (0600), preserving unknown host settings.
+// Empty known fields are removed so defaults and env fallbacks apply.
 func SaveConfig(path string, c HostConfig) error {
-	var b strings.Builder
-	b.WriteString("# Written by the Marlin settings UI. Keys read by the packaged host.\n")
-	field := func(key, value string) {
-		if value != "" {
-			fmt.Fprintf(&b, "%s = %q\n", key, value)
+	values := map[string]any{}
+	previous, err := os.ReadFile(path)
+	if err == nil {
+		if err := toml.Unmarshal(previous, &values); err != nil {
+			return fmt.Errorf("sidecar: cannot overwrite malformed config")
 		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("sidecar: read config: %w", err)
 	}
-	field("provider", c.Provider)
-	field("protocol", c.Protocol)
-	field("auth", c.Auth)
-	field("api_key", c.APIKey)
-	field("base_url", c.BaseURL)
-	field("model", c.Model)
-	field("session_id", c.SessionID)
-	field("storage_path", c.StoragePath)
-	field("tools_workspace", c.ToolsWorkspace)
-	field("tools_allow", c.ToolsAllow)
-
+	for _, key := range []string{"provider", "protocol", "auth", "api_key", "base_url", "model", "session_id", "storage_path", "tools_workspace", "tools_allow"} {
+		delete(values, key)
+	}
+	known, err := toml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := toml.Unmarshal(known, &fields); err != nil {
+		return err
+	}
+	for key, value := range fields {
+		values[key] = value
+	}
+	data, err := toml.Marshal(values)
+	if err != nil {
+		return fmt.Errorf("sidecar: encode config")
+	}
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("sidecar: config dir: %w", err)
 		}
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
-		return fmt.Errorf("sidecar: write config: %w", err)
+	file, err := os.CreateTemp(filepath.Dir(path), ".config-*.tmp")
+	if err != nil {
+		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	defer os.Remove(file.Name())
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(file.Name(), path); err != nil {
 		return fmt.Errorf("sidecar: rename config: %w", err)
 	}
 	return nil

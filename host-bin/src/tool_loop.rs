@@ -12,6 +12,9 @@
 // (docs/design.md §12.6 gap 1).
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tokio::io::AsyncReadExt;
+
+const PROJECT_INSTRUCTION_LIMIT: u64 = 32 * 1024;
 
 use marlin_agent_protocol::{
     ModelGatewayCompletionChoice, ModelGatewayCompletionOptions, ModelGatewayCompletionResponse,
@@ -32,6 +35,7 @@ pub struct ToolSurface {
     pub offer_options: ModelGatewayCompletionOptions,
     pub handlers: HashMap<String, Arc<ShellToolHandler>>,
     pub allow: Vec<String>,
+    workspace: PathBuf,
 }
 
 impl ToolSurface {
@@ -41,6 +45,10 @@ impl ToolSurface {
         workspace: PathBuf,
         allow: Vec<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let workspace = workspace.canonicalize()?;
+        if !workspace.is_dir() {
+            return Err("tool workspace must be a directory".into());
+        }
         let name = ModelToolName::new("run_command").map_err(|e| format!("tool name: {e}"))?;
         let declaration = ModelToolDeclaration::shell(ShellToolDeclarationRequest {
             name,
@@ -52,7 +60,7 @@ impl ToolSurface {
         })
         .map_err(|e| format!("invalid shell declaration: {e}"))?;
         let definition = declaration.definition();
-        let handler = Arc::new(ShellToolHandler::new(workspace, declaration));
+        let handler = Arc::new(ShellToolHandler::new(workspace.clone(), declaration));
         let mut handlers = HashMap::new();
         handlers.insert(definition.name.as_str().to_owned(), handler);
         Ok(Self {
@@ -62,7 +70,54 @@ impl ToolSurface {
             },
             handlers,
             allow,
+            workspace,
         })
+    }
+
+    async fn project_context(&self) -> String {
+        let mut text = format!(
+            "You are a coding assistant working on the local project at {:?}.\n\
+             run_command starts in this directory; this is not a filesystem sandbox.\n\
+             Inspect existing files and Git changes before editing. Preserve user changes. \
+             Read scoped AGENTS.md instructions before editing nested directories. \
+             Use the project's checks to verify edits. Report actual command results and \
+             unfinished work honestly. Do not commit, push, or publish unless requested.\n",
+            self.workspace,
+        );
+        for name in ["AGENTS.md", "CLAUDE.md"] {
+            let Ok(path) = self.workspace.join(name).canonicalize() else {
+                continue;
+            };
+            if !path.starts_with(&self.workspace) {
+                continue;
+            }
+            let Ok(metadata) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !metadata.is_file() {
+                continue;
+            }
+            let Ok(file) = tokio::fs::File::open(&path).await else {
+                continue;
+            };
+            let mut bytes = Vec::new();
+            if file
+                .take(PROJECT_INSTRUCTION_LIMIT + 1)
+                .read_to_end(&mut bytes)
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            let truncated = bytes.len() > PROJECT_INSTRUCTION_LIMIT as usize;
+            bytes.truncate(PROJECT_INSTRUCTION_LIMIT as usize);
+            text.push_str(&format!("\nProject instructions from {name}:\n"));
+            text.push_str(&String::from_utf8_lossy(&bytes));
+            if truncated {
+                text.push_str("\n[Instructions truncated; read the rest with run_command.]\n");
+            }
+        }
+        text
     }
 
     fn admitted(&self, call: &ModelToolCall) -> bool {
@@ -148,6 +203,13 @@ async fn run_turn(
 ) {
     let endpoint = request.endpoint().clone();
     let mut messages: Vec<ModelGatewayMessage> = request.messages().to_vec();
+    messages.insert(
+        0,
+        plain_message(
+            ModelGatewayMessageRole::System,
+            surface.project_context().await,
+        ),
+    );
     let options = surface.offer_options.clone();
     let mut accumulated = String::new();
     let mut sequence: u64 = 0;
@@ -162,6 +224,7 @@ async fn run_turn(
     }
 
     for _round in 0..max_rounds {
+        let round_start = accumulated.len();
         let req = ModelGatewayRequest::new(endpoint.clone(), messages.clone())
             .with_options(options.clone());
         let mut source = match inner.stream(req).await {
@@ -203,10 +266,9 @@ async fn run_turn(
                         .find(|choice| choice.message.role == ModelGatewayMessageRole::Assistant)
                         .map(|choice| choice.message.content.as_str())
                         .unwrap_or("");
-                    if content.len() > accumulated.len()
-                        && content.starts_with(accumulated.as_str())
-                    {
-                        let gap = content[accumulated.len()..].to_owned();
+                    let streamed = &accumulated[round_start..];
+                    if content.len() > streamed.len() && content.starts_with(streamed) {
+                        let gap = content[streamed.len()..].to_owned();
                         sequence += 1;
                         accumulated.push_str(&gap);
                         send!(ModelStreamEvent::Chunk(ModelStreamChunk::new(
@@ -224,7 +286,7 @@ async fn run_turn(
                         .collect();
                     if calls.is_empty() {
                         let _ = tx
-                            .send(Err(ModelGatewayError::RequestNotDispatched(
+                            .send(Err(ModelGatewayError::Completion(
                                 "tool request carried no calls".into(),
                             )))
                             .await;
@@ -253,14 +315,19 @@ async fn run_turn(
             }
         }
         if !tool_requested {
-            // The inner stream ended without a terminal event; report what
-            // streamed so far as one complete turn.
-            break;
+            let _ = tx
+                .send(Err(ModelGatewayError::Completion(
+                    "provider stream ended without a terminal response".into(),
+                )))
+                .await;
+            return;
         }
     }
-    // Round budget exhausted (or a bare stream end): report what streamed so
-    // far as one complete turn.
-    let _ = tx.send(Ok(synthesized(&accumulated))).await;
+    let _ = tx
+        .send(Err(ModelGatewayError::Completion(format!(
+            "tool round limit ({max_rounds}) reached; task may be unfinished"
+        ))))
+        .await;
 }
 
 /// Hand-rolled plain message (the protocol's `plain` helper is private).
@@ -324,7 +391,141 @@ mod tests {
     use marlin_agent_runtime::{TokioAgentRuntime, TokioAgentRuntimeBuildRequest};
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    struct EmptyGateway;
+    impl ModelStreamingGateway for EmptyGateway {
+        fn stream(
+            &self,
+            _: ModelGatewayRequest,
+        ) -> ModelGatewayFuture<ModelGatewayResult<ModelGatewayEventStream>> {
+            Box::pin(async { Ok(Box::pin(tokio_stream::empty()) as ModelGatewayEventStream) })
+        }
+    }
+
+    #[tokio::test]
+    async fn eof_and_exhausted_budget_are_not_success() {
+        for rounds in [0, 1] {
+            let (runtime, _events) = TokioAgentRuntime::from_build_request(
+                TokioAgentRuntimeBuildRequest::runtime_root(64),
+            );
+            let surface = Arc::new(ToolSurface::shell(std::env::temp_dir(), vec![]).unwrap());
+            let gateway =
+                ToolLoopGateway::new(Arc::new(EmptyGateway), surface, runtime.context(), rounds);
+            let request = ModelGatewayRequest::new(
+                ModelEndpoint::new("test", "model"),
+                vec![plain_message(ModelGatewayMessageRole::User, "hi")],
+            );
+            let result: Vec<_> = gateway.stream(request).await.unwrap().collect().await;
+            assert!(result.iter().any(Result::is_err), "must report failure");
+            assert!(
+                !result
+                    .iter()
+                    .any(|event| matches!(event, Ok(ModelStreamEvent::Completed { .. })))
+            );
+        }
+    }
+
     struct PendingGateway(Arc<AtomicBool>);
+
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let id = NEXT.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "marlin-context-{}-{nanos}-{id}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct CaptureGateway(Arc<std::sync::Mutex<Vec<ModelGatewayMessage>>>);
+    impl ModelStreamingGateway for CaptureGateway {
+        fn stream(
+            &self,
+            request: ModelGatewayRequest,
+        ) -> ModelGatewayFuture<ModelGatewayResult<ModelGatewayEventStream>> {
+            *self.0.lock().unwrap() = request.messages().to_vec();
+            Box::pin(async {
+                Ok(Box::pin(tokio_stream::iter([Ok(synthesized("done"))]))
+                    as ModelGatewayEventStream)
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn project_instructions_reach_provider_and_refresh_each_turn() {
+        let dir = Scratch::new();
+        let (runtime, _events) =
+            TokioAgentRuntime::from_build_request(TokioAgentRuntimeBuildRequest::runtime_root(64));
+        let surface = Arc::new(ToolSurface::shell(dir.0.clone(), vec![]).unwrap());
+        let captured = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let gateway = ToolLoopGateway::new(
+            Arc::new(CaptureGateway(captured.clone())),
+            surface,
+            runtime.context(),
+            2,
+        );
+        for instruction in ["Use TEST_COMMAND_A", "Use TEST_COMMAND_B"] {
+            std::fs::write(dir.0.join("AGENTS.md"), instruction).unwrap();
+            let request = ModelGatewayRequest::new(
+                ModelEndpoint::new("test", "model"),
+                vec![plain_message(ModelGatewayMessageRole::User, "inspect")],
+            );
+            let result: Vec<_> = gateway.stream(request).await.unwrap().collect().await;
+            assert!(
+                result
+                    .iter()
+                    .any(|r| matches!(r, Ok(ModelStreamEvent::Completed { .. })))
+            );
+            let messages = captured.lock().unwrap();
+            assert_eq!(messages[0].role, ModelGatewayMessageRole::System);
+            assert!(messages[0].content.contains(instruction));
+            assert!(
+                messages[0]
+                    .content
+                    .contains(dir.0.canonicalize().unwrap().to_str().unwrap())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn instruction_limits_and_external_symlinks() {
+        let dir = Scratch::new();
+        std::fs::write(
+            dir.0.join("AGENTS.md"),
+            "a".repeat(PROJECT_INSTRUCTION_LIMIT as usize + 1),
+        )
+        .unwrap();
+        let surface = ToolSurface::shell(dir.0.clone(), vec![]).unwrap();
+        let text = surface.project_context().await;
+        assert!(text.contains("Instructions truncated"));
+        assert!(text.len() < PROJECT_INSTRUCTION_LIMIT as usize + 2048);
+        #[cfg(unix)]
+        {
+            let outside = Scratch::new();
+            std::fs::write(outside.0.join("outside.md"), "EXTERNAL_INSTRUCTION").unwrap();
+            std::os::unix::fs::symlink(outside.0.join("outside.md"), dir.0.join("CLAUDE.md"))
+                .unwrap();
+            assert!(
+                !surface
+                    .project_context()
+                    .await
+                    .contains("EXTERNAL_INSTRUCTION")
+            );
+        }
+    }
+
     struct Dropped(Arc<AtomicBool>);
     impl Drop for Dropped {
         fn drop(&mut self) {
